@@ -239,6 +239,15 @@ class AuthHTTPException(HTTPException):
 - Security requirements per endpoint
 - Type-safe authentication
 
+## Testing
+
+**Always create Pytest unit tests for new features** (functions, classes, routes, etc)
+Tests are always created in the same directory as the code they test in a tests/ directory. Create the tests directory if it doesn't exist.
+
+**After updating any logic**, check whether existing unit tests need to be updated. If so, do it following the implementation.
+
+Always test individual functions and classes.
+
 ### Testing Approach
 
 #### Unit Tests (9 tests)
@@ -339,3 +348,139 @@ LOG_LEVEL=INFO                     # Logging level
 - Environment variables can be managed using Pydantic Settings
 - Tests ensure all 40 test cases pass before deployment
 - Use `make quality` before committing code changes
+
+## 📎 Style & Conventions
+
+- **Use Python** as the primary language.
+- **Follow PEP8**, always use type hints, and format with `ruff`.
+- **Use `pydanticv2` for data validation**.
+- **ALWAYS use classes, data types, data models, for typesafety and verifiability**
+- **ALWAYS use docstrings for every function** using the Google style:
+
+  ```python
+  def example():
+      """
+      Brief summary.
+
+      Args:
+          param1 (type): Description.
+
+      Returns:
+          type: Description.
+
+      Raises:
+          Exception: Description.
+      """
+  ```
+
+## 🛠️ Environment Setup
+
+```bash
+# Create and activate virtual environment with uv
+uv venv
+source .venv/bin/activate  # On Unix/macOS
+# .venv\Scripts\activate  # On Windows
+
+# Install dependencies
+uv sync
+
+# Install package in development mode
+uv pip install -e .
+```
+
+## 🛠️ Development Commands
+
+```bash
+# Run all tests
+uv run pytest
+
+# Run specific tests
+uv run pytest concept_library/full_review_loop/tests/ -v
+
+# Format code
+uv run ruff format .
+
+# Run linter
+uv run ruff check .
+
+# Run type checker
+uv run mypy .
+```
+
+## 🛠️ UV Package Management
+
+This project uses UV for Python package management. Key commands include:
+
+```bash
+# Create virtual environment
+uv venv
+
+# Install dependencies from pyproject.toml
+uv sync
+
+# Install a specific package
+uv add requests
+
+# Remove a package
+uv remove requests
+
+# Run a Python script or command
+uv run python script.py
+uv run pytest
+
+# Install editable packages
+uv pip install -e .
+```
+
+When running scripts or tools, always use `uv run` to ensure proper virtual environment activation:
+
+```bash
+# Preferred way to run commands
+uv run pytest
+uv run black .
+
+# Running tools without installing
+uvx black .
+uvx ruff check .
+```
+
+## 🛠️ BRANCHING STRATEGY
+
+This repository follows a develop → main branching strategy, where:
+
+- `main` is the production branch containing stable releases
+- `dev` is the integration branch where features are merged
+- Feature branches are created from `dev` for work in progress
+
+When creating branches, follow these naming conventions:
+
+- Feature branches: `feature/descriptive-name`
+- Bug fix branches: `fix/issue-description`
+- Documentation branches: `docs/what-is-changing`
+- Refactoring branches: `refactor/what-is-changing`
+
+## Behavioural Guidelines
+
+- Always use `uv` for package management.
+- Always use `ruff` for linting.
+
+- **NEVER ASSUME OR GUESS**
+- When in doubt, ask for clarification or ask for help. More often than not you can do websearch to find relevant examples or check ai_info/docs/ for examples that the user have added.
+
+- **Always confirm file paths & module names** exist before using them.
+
+- **Comment non-obvious code** and ensure everything is understandable to a mid-level developer.
+- When writing complex logic, **add an inline `# Reason:` comment** explaining the why, not just the what.
+
+- **KEEP README.md UPDATED**
+- Whenever you make changes to the codebase, update the README.md file to reflect the changes. Especially if you add configuration changes or new features.
+
+- **ALWAYS keep CLAUDE.md UPDATED**
+- Add new dependencies to CLAUDE.md
+- Add important types and patterns to CLAUDE.md
+
+## IMPORTANT TYPES & PATTERNS
+
+### 
+
+> add important types and patterns here
