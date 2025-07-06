@@ -91,6 +91,8 @@ src/project/
 
 ## Documentation Reference
 
+Documentation can be found in /ai_info/docs. 
+
 ### FastAPI Documentation
 **File:** `ai_info/docs/fasttapi.md`  
 **Description:** Comprehensive FastAPI code snippets and examples  
