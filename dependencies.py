@@ -49,6 +49,8 @@ async def verify_api_key(
     Raises:
         HTTPException: If the API key is missing or invalid
     """
+
+    print(f"API Key: {api_key}")  # Debugging line to check API key
     if not api_key:
         logger.warning("API key missing in request")
         raise AuthHTTPException(

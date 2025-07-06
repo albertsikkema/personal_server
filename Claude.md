@@ -1,5 +1,94 @@
 # Claude.md - Project Documentation Reference
 
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Core Principles
+
+KISS (Keep It Simple, Stupid): Simplicity should be a key goal in design. Choose straightforward solutions over complex ones whenever possible. Simple solutions are easier to understand, maintain, and debug.
+
+YAGNI (You Aren't Gonna Need It): Avoid building functionality on speculation. Implement features only when they are needed, not when you anticipate they might be useful in the future.
+
+Dependency Inversion: High-level modules should not depend on low-level modules. Both should depend on abstractions. This principle enables flexibility and testability.
+
+Open/Closed Principle: Software entities should be open for extension but closed for modification. Design your systems so that new functionality can be added with minimal changes to existing code.
+
+## 🤖 AI Assistant Guidelines
+
+### Context Awareness
+
+- When implementing features, always check existing patterns first
+- Prefer composition over inheritance in all designs
+- Use existing utilities before creating new ones
+- Check for similar functionality in other domains/features
+
+### Common Pitfalls to Avoid
+
+- Creating duplicate functionality
+- Overwriting existing tests
+- Modifying core frameworks without explicit instruction
+- Adding dependencies without checking existing alternatives
+
+### Workflow Patterns
+
+- Preferably create tests BEFORE implementation (TDD, Test Driven Development)
+- Use "think hard" for architecture decisions
+- Break complex tasks into smaller, testable units
+- Validate understanding before implementation
+
+## 🧱 Code Structure & Modularity
+
+- **Never create a file longer than 500 lines of code.** If a file approaches this limit, refactor by splitting it into modules or helper files.
+- **Functions should be short and focused sub 50 lines of code** and have a single responsibility.
+- **Classes should be short and focused sub 50 lines of code** and have a single responsibility.
+- **Organize code into clearly separated modules**, grouped by feature or responsibility.
+
+## Architecture
+
+Strict vertical slice architecture with tests that live next to the code they test.
+
+```
+src/project/
+    __init__.py
+    main.py
+    tests/test_main.py
+    conftest.py
+    module_one/  (eg. database, core, auth)
+        __init__.py
+        module_one.py
+        tests/
+            test_module_one.py
+    module_two/  (eg. api, ui, cli)
+        __init__.py
+        module_two.py
+        tests/
+            test_module_two.py
+    
+    features/  (eg. business logic, tools, etc.)
+        feature_one/
+            __init__.py
+            feature.py
+            tests/
+                test_feature.py
+```
+
+Features can also be part of modules if the module for example is a api integration or a cli tool.
+
+eg
+```
+src/project/
+    module_one/  (api integration with crm service)
+        __init__.py
+        module_one.py
+        tests/
+            test_module_one.py
+        features/
+            feature_one/  (CRM service integration slice)
+                __init__.py
+                feature.py
+                tests/
+                    test_feature.py
+```
+
 ## Documentation Reference
 
 ### FastAPI Documentation
@@ -42,21 +131,6 @@
 - Advanced features (RootModel, computed fields)
 - Integration with external services (Redis, HTTP APIs)
 
-### Ruff Documentation
-**File:** `ai_info/docs/ruff.md`  
-**Description:** Comprehensive Ruff linter and formatter code snippets and examples  
-**Key Topics:**
-- Installation (pip, uv, pipx, homebrew, standalone installers)
-- Command line usage (ruff check, ruff format)
-- Configuration (pyproject.toml, ruff.toml)
-- Rule selection and ignoring specific rules
-- Integration with editors and CI/CD (GitHub Actions)
-- Type checking and narrowing examples
-- Python language feature support
-- Performance optimization and best practices
-- Jupyter notebook support
-- Custom rule configuration
-- Error detection and fixing
 
 ## Project Dependencies
 
@@ -200,6 +274,8 @@ make quality
 6. **Security**: Use FastAPI Security classes (`APIKeyHeader`, `Security()`, `Depends()`)
 7. **Testing**: Use TestClient for comprehensive API testing with dependency mocking
 8. **Documentation**: FastAPI automatically generates OpenAPI documentation with security schemas
+
+For more best practices, see /ai_info/fastapi-best-practices.md
 
 ## Project Structure
 
