@@ -120,6 +120,16 @@ LOG_FILE_NAME=fastapi.log
 LOG_MAX_BYTES=10485760
 LOG_BACKUP_COUNT=5
 LOG_JSON_FORMAT=true
+
+# Geocoding configuration
+GEOCODING_CACHE_TTL_HOURS=24
+GEOCODING_USER_RATE_LIMIT=10/minute
+
+# Web crawling configuration  
+CRAWL4AI_BASE_URL=https://crawl4ai.test001.nl
+CRAWL4AI_API_TOKEN=your-crawl4ai-jwt-token
+CRAWLING_CACHE_TTL_HOURS=1
+CRAWLING_USER_RATE_LIMIT=10/minute
 ```
 
 ### Configuration Validation
@@ -140,6 +150,16 @@ The application includes comprehensive configuration validation:
 - **LOG_MAX_BYTES**: Max file size before rotation (default: 10MB)
 - **LOG_BACKUP_COUNT**: Number of backup files to keep (default: 5)
 - **LOG_JSON_FORMAT**: Use JSON format for file logs (default: true)
+
+#### Geocoding Settings
+- **GEOCODING_CACHE_TTL_HOURS**: Cache TTL for geocoding results (default: 24)
+- **GEOCODING_USER_RATE_LIMIT**: User rate limit for geocoding endpoints (default: "10/minute")
+
+#### Web Crawling Settings
+- **CRAWL4AI_BASE_URL**: Base URL for Crawl4AI instance (default: "https://crawl4ai.test001.nl")
+- **CRAWL4AI_API_TOKEN**: JWT token for Crawl4AI authentication (optional)
+- **CRAWLING_CACHE_TTL_HOURS**: Cache TTL for crawling results (default: 1)
+- **CRAWLING_USER_RATE_LIMIT**: User rate limit for crawling endpoints (default: "10/minute")
 
 Invalid configurations will cause the application to fail fast with clear error messages.
 
@@ -190,6 +210,242 @@ fastapi run main.py --port 8000
 
 - `GET /protected` - Example protected endpoint
 - `GET /protected/data` - Example protected data endpoint
+
+### 🔍 Geocoding API
+
+Get geographic coordinates from city names using the Nominatim service:
+
+- `GET /geocode/city?city={city_name}` - Convert city name to coordinates
+- `GET /geocode/health` - Health check for geocoding service
+- `POST /geocode/cache/clear` - Clear geocoding cache (admin)
+
+### 🕷️ Web Crawling API
+
+Advanced web crawling with screenshot capture and recursive link following:
+
+- `POST /crawl` - Crawl URLs with full feature set
+- `GET /crawl/health` - Comprehensive crawling service health check
+- `POST /crawl/cache/clear` - Administrative cache management
+
+## 🕷️ Web Crawling API
+
+The crawling API provides powerful web scraping capabilities with screenshot capture, recursive link following, and intelligent caching.
+
+### Features
+
+- **Multi-URL Crawling**: Process up to 10 URLs per request
+- **Screenshot Capture**: Full-page screenshots with custom dimensions (320x240 to 3840x2160)
+- **Recursive Crawling**: Follow internal and external links with configurable depth
+- **Smart Caching**: TTL-based caching with URL normalization and deduplication
+- **Link Extraction**: Extract internal and external links from crawled pages
+- **Multiple Output Formats**: Markdown, cleaned HTML, or raw content
+- **Rate Limiting**: User-level (10/min) and service-level (1/sec) protection
+- **Authentication**: JWT token support for Crawl4AI service integration
+
+### Basic Usage Examples
+
+#### Simple URL Crawling
+
+```bash
+curl -X POST "http://localhost:8000/crawl" \
+  -H "X-API-KEY: your-api-key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "urls": ["https://example.com", "https://httpbin.org/html"],
+    "markdown_only": true,
+    "cache_mode": "enabled"
+  }'
+```
+
+#### Screenshot Capture
+
+```bash
+curl -X POST "http://localhost:8000/crawl" \
+  -H "X-API-KEY: your-api-key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "urls": ["https://example.com"],
+    "capture_screenshots": true,
+    "screenshot_width": 1280,
+    "screenshot_height": 720,
+    "screenshot_wait_for": 3
+  }'
+```
+
+#### Recursive Crawling
+
+```bash
+curl -X POST "http://localhost:8000/crawl" \
+  -H "X-API-KEY: your-api-key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "urls": ["https://example.com"],
+    "scrape_internal_links": true,
+    "follow_internal_links": true,
+    "max_depth": 2,
+    "max_pages": 10,
+    "cache_mode": "enabled"
+  }'
+```
+
+#### External Link Following
+
+```bash
+curl -X POST "http://localhost:8000/crawl" \
+  -H "X-API-KEY: your-api-key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "urls": ["https://example.com"],
+    "scrape_external_links": true,
+    "follow_external_links": true,
+    "max_depth": 2,
+    "max_pages": 5
+  }'
+```
+
+### Request Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `urls` | array | **required** | URLs to crawl (1-10 URLs) |
+| `scrape_internal_links` | boolean | `false` | Extract internal links |
+| `scrape_external_links` | boolean | `false` | Extract external links |
+| `follow_internal_links` | boolean | `false` | Recursively crawl internal links |
+| `follow_external_links` | boolean | `false` | Recursively crawl external links |
+| `max_depth` | integer | `2` | Maximum crawl depth (1-5, max 3 for external) |
+| `max_pages` | integer | `10` | Maximum pages to crawl (1-50, max 20 for external) |
+| `markdown_only` | boolean | `false` | Return only markdown content |
+| `capture_screenshots` | boolean | `false` | Capture full-page screenshots |
+| `screenshot_width` | integer | `1920` | Screenshot width (320-3840) |
+| `screenshot_height` | integer | `1080` | Screenshot height (240-2160) |
+| `screenshot_wait_for` | integer | `2` | Wait time before screenshot (0-10 seconds) |
+| `cache_mode` | string | `"enabled"` | Cache behavior: `enabled`, `disabled`, `bypass` |
+
+### Response Format
+
+```json
+{
+  "total_urls": 3,
+  "successful_crawls": 3,
+  "failed_crawls": 0,
+  "cached_results": 1,
+  "results": [
+    {
+      "url": "https://example.com",
+      "success": true,
+      "status_code": 200,
+      "markdown": "# Example Domain\n\nThis domain is for use in illustrative examples...",
+      "cleaned_html": "<h1>Example Domain</h1><p>This domain is for use...</p>",
+      "metadata": {
+        "title": "Example Domain",
+        "description": "Example domain description"
+      },
+      "internal_links": ["https://example.com/about"],
+      "external_links": ["https://www.iana.org/domains"],
+      "screenshot_base64": "iVBORw0KGgoAAAANSUhEUgAA...",
+      "screenshot_size": {"width": 1920, "height": 1080},
+      "crawl_time_seconds": 2.5,
+      "depth": 0
+    }
+  ],
+  "timestamp": "2024-01-01T12:00:00+00:00",
+  "total_time_seconds": 3.2
+}
+```
+
+### Advanced Features
+
+#### URL Deduplication
+
+The crawler intelligently handles URL variations:
+- **Fragment removal**: `https://example.com/page#section1` → `https://example.com/page`
+- **Trailing slash normalization**: `https://example.com/page/` → `https://example.com/page`
+- **Case normalization**: `HTTPS://EXAMPLE.COM` → `https://example.com`
+- **Root path handling**: `https://example.com/` → `https://example.com`
+
+#### Safety Limits
+
+External link crawling has stricter safety limits:
+- **Max depth**: 3 levels (vs 5 for internal)
+- **Max pages**: 20 pages (vs 50 for internal)
+- **Security validation**: Prevents crawling malicious or excessive external content
+
+#### Screenshot Validation
+
+Screenshot dimensions are validated for security and performance:
+- **Pixel count limit**: Maximum 4K resolution (8,294,400 pixels)
+- **Aspect ratio**: Between 0.5:1 and 4:1 to prevent extreme dimensions
+- **Dimension ranges**: Width 320-3840px, Height 240-2160px
+
+### Health Check
+
+```bash
+curl -X GET "http://localhost:8000/crawl/health" \
+  -H "X-API-KEY: your-api-key"
+```
+
+Response:
+```json
+{
+  "service": "crawling",
+  "status": "healthy",
+  "cache_size": 42,
+  "cache_ttl_hours": 1,
+  "rate_limiter_active": true,
+  "crawl4ai_instance": "https://crawl4ai.test001.nl",
+  "crawl4ai_healthy": true,
+  "crawl4ai_response": {
+    "status": "healthy",
+    "version": "0.6.0"
+  }
+}
+```
+
+### Error Handling
+
+The API provides detailed error responses:
+
+```json
+{
+  "detail": "Crawl4AI service unreachable",
+  "request_id": "550e8400-e29b-41d4-a716-446655440000",
+  "timestamp": "2024-01-01T12:00:00+00:00"
+}
+```
+
+Common error codes:
+- `401`: Authentication required or invalid
+- `422`: Invalid input parameters (URL format, dimension limits, etc.)
+- `429`: Rate limit exceeded
+- `503`: Crawl4AI service unavailable
+- `504`: Crawl4AI service timeout
+
+## 🔍 Geocoding API
+
+Convert city names to geographic coordinates using the Nominatim service.
+
+### Usage Example
+
+```bash
+curl -X GET "http://localhost:8000/geocode/city?city=London" \
+  -H "X-API-KEY: your-api-key"
+```
+
+Response:
+```json
+{
+  "city": "London",
+  "location": {
+    "lat": 51.5074,
+    "lon": -0.1278
+  },
+  "display_name": "London, Greater London, England, United Kingdom",
+  "place_id": 12345,
+  "boundingbox": [51.2868, 51.6918, -0.5103, 0.3340],
+  "timestamp": "2024-01-01T12:00:00+00:00",
+  "cached": false
+}
+```
 
 ### Authentication
 
@@ -246,7 +502,7 @@ Authentication failures return enhanced error responses with request tracking:
 
 ### Comprehensive Test Suite
 
-The application includes 40 comprehensive tests covering:
+The application includes 160 comprehensive tests covering:
 - **Unit Tests**: Authentication dependency and security function validation
 - **Integration Tests**: Full API endpoint testing with FastAPI security
 - **Security Tests**: Injection attacks, XSS, and malformed input protection
@@ -254,6 +510,10 @@ The application includes 40 comprehensive tests covering:
 - **Environment Tests**: Documentation visibility across development, staging, and production
 - **Edge Cases**: Empty values, unicode attacks, and extreme input sizes
 - **OpenAPI Tests**: Security scheme documentation and Swagger UI integration
+- **Crawling Tests**: Crawl4AI integration, screenshot capture, recursive crawling
+- **Caching Tests**: TTL expiration, URL normalization, cache invalidation
+- **Rate Limiting Tests**: Service protection and concurrent request handling
+- **Geocoding Tests**: Nominatim integration, location validation, error handling
 
 ### Linting and Formatting with Ruff
 
@@ -327,28 +587,53 @@ fastapi_template/
 ├── config.py            # Pydantic settings configuration
 ├── dependencies.py      # FastAPI security dependencies (APIKeyHeader, etc.)
 ├── middleware.py        # Utility functions for error responses
-├── tests/               # Test suite
+├── models/              # Pydantic data models
 │   ├── __init__.py
-│   ├── conftest.py      # Test fixtures
+│   ├── crawling.py      # Web crawling request/response models
+│   └── geocoding.py     # Geocoding request/response models
+├── services/            # Business logic services
+│   ├── __init__.py
+│   ├── crawling.py      # Crawl4AI integration service
+│   ├── crawl_cache.py   # Crawling cache with TTL and deduplication
+│   ├── geocoding.py     # Nominatim geocoding service
+│   ├── cache.py         # Geocoding cache service
+│   └── rate_limiter.py  # Rate limiting service
+├── routers/             # FastAPI routers
+│   ├── __init__.py
+│   ├── crawling.py      # Web crawling API endpoints
+│   └── geocoding.py     # Geocoding API endpoints
+├── tests/               # Comprehensive test suite (160 tests)
+│   ├── __init__.py
+│   ├── conftest.py      # Test fixtures and configuration
 │   ├── test_unit.py     # Unit tests for authentication dependencies
-│   └── test_integration.py  # Integration tests with FastAPI security
-├── .env                 # Environment variables (not in git)
-├── .env.example         # Example environment variables
-├── requirements.txt     # Python dependencies
-├── pyproject.toml       # Ruff configuration and project metadata
-├── pytest.ini           # Pytest configuration
-├── Makefile            # Common development commands
-├── reviews/            # Code review documentation
-│   ├── 20250106221930_review.md      # Original code review
-│   ├── 20250106_response.md          # Implementation response
-│   └── 20250106_final_response.md    # Final implementation summary
+│   ├── test_integration.py  # Integration tests with FastAPI security
+│   ├── test_cache.py    # Geocoding cache tests
+│   ├── test_crawl_cache.py  # Crawling cache tests with screenshot keys
+│   ├── test_crawling_service.py  # Crawling service and screenshot tests
+│   ├── test_geocoding_service.py  # Geocoding service tests
+│   └── test_rate_limiter.py  # Rate limiting tests
 ├── utils/              # Utility modules
 │   ├── __init__.py
 │   └── logging.py      # Advanced logging utilities with JSON formatting
+├── ai_info/            # AI assistant documentation
+│   └── docs/           # Reference documentation
+│       ├── fastapi.md  # FastAPI code examples and patterns
+│       ├── pydantic.md # Pydantic v2 examples and migration guide
+│       ├── crawl4ai.md # Crawl4AI integration documentation
+│       └── nominatim.md # Nominatim geocoding API reference
+├── PRPs/               # Project Requirements and Plans
+│   └── crawl4ai-endpoint.md  # Complete crawling implementation plan
 ├── logs/               # Log files (excluded from git)
 │   └── .gitkeep        # Keep directory in git
-├── .gitignore          # Git ignore file
-└── README.md           # This file
+├── .env                # Environment variables (not in git)
+├── .env.example        # Example environment variables
+├── requirements.txt    # Python dependencies
+├── pyproject.toml      # Ruff configuration and project metadata
+├── pytest.ini         # Pytest configuration
+├── Makefile           # Common development commands
+├── Claude.md          # AI assistant project documentation
+├── .gitignore         # Git ignore file
+└── README.md          # This file
 ```
 
 ## Development
@@ -553,7 +838,7 @@ The application includes comprehensive security testing against:
    ```bash
    make quality  # Runs: ruff format, ruff check --fix, pytest
    ```
-4. Ensure all 37 tests pass and zero linting issues
+4. Ensure all 160 tests pass and zero linting issues
 5. Submit a pull request
 
 ### Code Quality Standards

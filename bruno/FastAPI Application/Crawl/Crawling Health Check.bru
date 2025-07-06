@@ -1,0 +1,103 @@
+meta {
+  name: Crawling Health Check
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/crawl/health
+  body: none
+  auth: none
+}
+
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  
+  test("Health response structure", function() {
+    const data = res.getBody();
+    
+    expect(data).to.have.property('service');
+    expect(data.service).to.equal('crawling');
+    
+    expect(data).to.have.property('status');
+    expect(['healthy', 'degraded', 'unhealthy']).to.include(data.status);
+    
+    expect(data).to.have.property('cache_size');
+    expect(data.cache_size).to.be.a('number');
+    expect(data.cache_size).to.be.at.least(0);
+    
+    expect(data).to.have.property('cache_ttl_hours');
+    expect(data.cache_ttl_hours).to.be.a('number');
+    expect(data.cache_ttl_hours).to.be.greaterThan(0);
+    
+    expect(data).to.have.property('rate_limiter_active');
+    expect(data.rate_limiter_active).to.be.a('boolean');
+    
+    expect(data).to.have.property('crawl4ai_instance');
+    expect(data.crawl4ai_instance).to.be.a('string');
+    expect(data.crawl4ai_instance).to.include('http');
+    
+    expect(data).to.have.property('crawl4ai_healthy');
+    expect(data.crawl4ai_healthy).to.be.a('boolean');
+  });
+  
+  test("Crawl4AI response validation", function() {
+    const data = res.getBody();
+    
+    if (data.crawl4ai_healthy && data.crawl4ai_response) {
+      expect(data.crawl4ai_response).to.be.an('object');
+      // Crawl4AI response structure may vary
+    }
+  });
+}
+
+docs {
+  # Crawling Service Health Check
+  
+  This endpoint provides comprehensive health status of the crawling service and Crawl4AI instance.
+  
+  ## Health Information
+  
+  - **Service Status**: healthy/degraded based on Crawl4AI connectivity
+  - **Cache Statistics**: Size, TTL, expired entries
+  - **Rate Limiter**: Status and configuration
+  - **Crawl4AI Instance**: URL and health status
+  - **External Service**: Crawl4AI response details
+  - **Authentication**: Automatically uses JWT token if configured
+  
+  ## Monitoring Use Cases
+  
+  - Service availability monitoring
+  - Performance metrics collection
+  - Cache utilization tracking
+  - External dependency health checking
+  - Troubleshooting connectivity issues
+  
+  ## Response Structure
+  
+  ```json
+  {
+    "service": "crawling",
+    "status": "healthy",
+    "cache_size": 42,
+    "cache_ttl_hours": 1,
+    "rate_limiter_active": true,
+    "crawl4ai_instance": "https://crawl4ai.test001.nl",
+    "crawl4ai_healthy": true,
+    "crawl4ai_response": {
+      "status": "healthy",
+      "version": "0.6.0",
+      "uptime": "2h 30m"
+    }
+  }
+  ```
+  
+  ## Status Meanings
+  
+  - **healthy**: All systems operational
+  - **degraded**: Crawl4AI unavailable but service functional
+  - **unhealthy**: Critical service issues
+}

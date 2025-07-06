@@ -9,7 +9,7 @@ from dependencies import AuthHTTPException, RequiredAuth
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from routers import geocoding
+from routers import crawling, geocoding
 from utils.logging import get_logger, setup_logging
 
 # Initialize logging configuration
@@ -49,6 +49,16 @@ app.include_router(
         404: {"description": "City not found"},
         429: {"description": "Rate limit exceeded"},
         503: {"description": "Service unavailable"},
+    },
+)
+
+app.include_router(
+    crawling.router,
+    responses={
+        401: {"description": "Authentication required"},
+        422: {"description": "Invalid input parameters"},
+        429: {"description": "Rate limit exceeded"},
+        503: {"description": "Crawl4AI service unavailable"},
     },
 )
 

@@ -1,0 +1,190 @@
+meta {
+  name: Crawl URLs
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{baseUrl}}/crawl
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "urls": [
+      "https://news.ycombinator.com"
+    ],
+    "markdown_only": true,
+    "scrape_internal_links": true,
+    "follow_internal_links": true,
+    "scrape_external_links": false,
+    "follow_external_links": false,
+    "max_depth": 3,
+    "max_pages": 50,
+    "capture_screenshots": false,
+    "screenshot_width": 1366,
+    "screenshot_height": 768,
+    "screenshot_wait_for": 2
+  }
+}
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  
+  test("Response has required fields", function() {
+    const data = res.getBody();
+    expect(data).to.have.property('total_urls');
+    expect(data).to.have.property('successful_crawls');
+    expect(data).to.have.property('failed_crawls');
+    expect(data).to.have.property('cached_results');
+    expect(data).to.have.property('results');
+    expect(data).to.have.property('timestamp');
+    expect(data).to.have.property('total_time_seconds');
+  });
+  
+  test("Response field types and values", function() {
+    const data = res.getBody();
+    expect(data.total_urls).to.be.a('number').and.equal(3);
+    expect(data.successful_crawls).to.be.a('number').and.at.least(0);
+    expect(data.failed_crawls).to.be.a('number').and.at.least(0);
+    expect(data.cached_results).to.be.a('number').and.at.least(0);
+    expect(data.results).to.be.an('array').with.length(data.total_urls);
+    expect(data.timestamp).to.be.a('string').and.match(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/);
+    expect(data.total_time_seconds).to.be.a('number').and.greaterThan(0);
+  });
+  
+  test("Individual result structure", function() {
+    const data = res.getBody();
+    
+    data.results.forEach((result, index) => {
+      expect(result).to.have.property('url');
+      expect(result).to.have.property('success');
+      expect(result.url).to.be.a('string');
+      expect(result.success).to.be.a('boolean');
+      
+      if (result.success) {
+        expect(result).to.have.property('markdown');
+        expect(result).to.have.property('cleaned_html');
+        expect(result).to.have.property('metadata');
+        expect(result).to.have.property('internal_links');
+        expect(result).to.have.property('external_links');
+        expect(result).to.have.property('status_code');
+        expect(result).to.have.property('crawl_time_seconds');
+        
+        expect(result.markdown).to.be.a('string');
+        expect(result.status_code).to.be.a('number').and.within(200, 299);
+        expect(result.crawl_time_seconds).to.be.a('number').and.greaterThan(0);
+        
+        if (result.internal_links) {
+          expect(result.internal_links).to.be.an('array');
+        }
+        if (result.external_links) {
+          expect(result.external_links).to.be.an('array');
+        }
+      } else {
+        expect(result).to.have.property('error_message');
+        expect(result.error_message).to.be.a('string');
+      }
+    });
+  });
+  
+  test("Screenshot validation", function() {
+    const data = res.getBody();
+    
+    data.results.forEach(result => {
+      if (result.success && result.screenshot_base64) {
+        expect(result.screenshot_base64).to.be.a('string');
+        expect(result).to.have.property('screenshot_size');
+        expect(result.screenshot_size).to.have.property('width');
+        expect(result.screenshot_size).to.have.property('height');
+        expect(result.screenshot_size.width).to.be.a('number').and.within(320, 3840);
+        expect(result.screenshot_size.height).to.be.a('number').and.within(240, 2160);
+      }
+    });
+  });
+  
+  test("Link extraction validation", function() {
+    const data = res.getBody();
+    
+    data.results.forEach(result => {
+      if (result.success) {
+        if (result.internal_links) {
+          result.internal_links.forEach(link => {
+            expect(link).to.be.a('string').and.match(/^https?:\/\//);
+          });
+        }
+        if (result.external_links) {
+          result.external_links.forEach(link => {
+            expect(link).to.be.a('string').and.match(/^https?:\/\//);
+          });
+        }
+      }
+    });
+  });
+}
+
+docs {
+  # Crawl URLs Endpoint
+  
+  This endpoint crawls one or more URLs and extracts content with optional screenshots and link extraction.
+  
+  ## Features
+  
+  - **Multi-URL Support**: Crawl 1-10 URLs per request
+  - **Content Extraction**: Markdown, HTML, metadata
+  - **Link Extraction**: Internal and external links
+  - **Screenshot Capture**: Custom dimensions with validation
+  - **Intelligent Caching**: TTL-based with option-aware cache keys
+  - **Rate Limiting**: 5 requests per minute per user
+  
+  ## Screenshot Options
+  
+  - **Width**: 320-3840 pixels (mobile to 4K width)
+  - **Height**: 240-2160 pixels (mobile to 4K height)
+  - **Wait Time**: 0-30 seconds before capture
+  - **Aspect Ratio**: Validated between 0.5:1 and 4:1
+  
+  ## Cache Modes
+  
+  - **enabled**: Use cache if available, store new results
+  - **disabled**: Don't use or store cache
+  - **bypass**: Ignore existing cache but store new results
+  
+  ## Response Structure
+  
+  ```json
+  {
+    "total_urls": 2,
+    "successful_crawls": 2,
+    "failed_crawls": 0,
+    "cached_results": 0,
+    "results": [
+      {
+        "url": "https://example.com",
+        "success": true,
+        "markdown": "# Example Domain\n\nThis domain is for use...",
+        "cleaned_html": "<h1>Example Domain</h1><p>This domain...",
+        "metadata": {
+          "title": "Example Domain",
+          "description": "Example domain description"
+        },
+        "internal_links": ["https://example.com/about"],
+        "external_links": ["https://www.iana.org/domains"],
+        "screenshot_base64": "iVBORw0KGgoAAAANSUhEUgAA...",
+        "screenshot_size": {"width": 1280, "height": 720},
+        "status_code": 200,
+        "crawl_time_seconds": 2.5
+      }
+    ],
+    "timestamp": "2024-01-01T12:00:00",
+    "total_time_seconds": 3.2
+  }
+  ```
+}

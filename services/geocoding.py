@@ -156,10 +156,12 @@ class GeocodingService:
             logger.error(
                 f"HTTP error from Nominatim API for city '{city}': {e.response.status_code}"
             )
-            raise Exception(f"Nominatim API HTTP error: {e.response.status_code}")
-        except httpx.TimeoutException:
+            raise Exception(
+                f"Nominatim API HTTP error: {e.response.status_code}"
+            ) from e
+        except httpx.TimeoutException as e:
             logger.error(f"Timeout error from Nominatim API for city '{city}'")
-            raise Exception("Nominatim API timeout")
+            raise Exception("Nominatim API timeout") from e
         except Exception as e:
             logger.error(f"Geocoding error for city '{city}': {e!s}")
             raise

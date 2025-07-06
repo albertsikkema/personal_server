@@ -1,0 +1,207 @@
+meta {
+  name: Crawl Link Extraction
+  type: http
+  seq: 5
+}
+
+post {
+  url: {{baseUrl}}/crawl
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "urls": ["https://news.ycombinator.com"],
+    "markdown_only": false,
+    "scrape_internal_links": true,
+    "scrape_external_links": true,
+    "capture_screenshots": false,
+    "screenshot_width": null,
+    "screenshot_height": null,
+    "screenshot_wait_for": null,
+    "cache_mode": "enabled"
+  }
+}
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  
+  test("Response structure validation", function() {
+    const data = res.getBody();
+    expect(data).to.have.property('total_urls');
+    expect(data).to.have.property('successful_crawls');
+    expect(data).to.have.property('failed_crawls');
+    expect(data).to.have.property('cached_results');
+    expect(data).to.have.property('results');
+    expect(data).to.have.property('timestamp');
+    expect(data).to.have.property('total_time_seconds');
+    
+    expect(data.total_urls).to.equal(1);
+    expect(data.results).to.be.an('array').with.length(1);
+    expect(data.timestamp).to.match(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/);
+  });
+  
+  test("Link extraction validation", function() {
+    const data = res.getBody();
+    
+    if (data.results.length > 0) {
+      const result = data.results[0];
+      expect(result).to.have.property('url');
+      expect(result).to.have.property('success');
+      expect(result.url).to.equal("https://news.ycombinator.com");
+      
+      if (result.success) {
+        // Should have link fields when link extraction is enabled
+        expect(result).to.have.property('internal_links');
+        expect(result).to.have.property('external_links');
+        
+        expect(result.internal_links).to.be.an('array');
+        expect(result.external_links).to.be.an('array');
+        
+        // Validate internal link URLs if present
+        result.internal_links.forEach(link => {
+          expect(link).to.be.a('string');
+          expect(link).to.match(/^https?:\/\//);
+          // Internal links should contain the same domain
+          expect(link).to.include('ycombinator.com');
+        });
+        
+        // Validate external link URLs if present
+        result.external_links.forEach(link => {
+          expect(link).to.be.a('string');
+          expect(link).to.match(/^https?:\/\//);
+          // External links should NOT contain the same domain
+          expect(link).to.not.include('ycombinator.com');
+        });
+        
+        // Should have basic crawl info
+        expect(result).to.have.property('status_code');
+        expect(result).to.have.property('crawl_time_seconds');
+        expect(result.status_code).to.be.a('number').and.within(200, 299);
+        expect(result.crawl_time_seconds).to.be.a('number').and.greaterThan(0);
+      } else {
+        expect(result).to.have.property('error_message');
+        expect(result.error_message).to.be.a('string');
+      }
+    }
+  });
+  
+  test("Full content fields present", function() {
+    const data = res.getBody();
+    
+    if (data.results.length > 0 && data.results[0].success) {
+      const result = data.results[0];
+      
+      // Should have all content since markdown_only is false
+      expect(result).to.have.property('markdown');
+      expect(result).to.have.property('cleaned_html');
+      expect(result).to.have.property('metadata');
+      
+      expect(result.markdown).to.be.a('string');
+      expect(result.cleaned_html).to.be.a('string');
+      expect(result.metadata).to.be.an('object');
+      
+      // Screenshots should be disabled
+      expect(result.screenshot_base64).to.be.null;
+      expect(result.screenshot_size).to.be.null;
+    }
+  });
+  
+  test("Link extraction configuration validation", function() {
+    const data = res.getBody();
+    
+    // Both internal and external links should be extracted
+    if (data.results[0] && data.results[0].success) {
+      const result = data.results[0];
+      // Both arrays should exist (even if empty)
+      expect(result.internal_links).to.exist;
+      expect(result.external_links).to.exist;
+    }
+  });
+  
+  test("Performance validation", function() {
+    const data = res.getBody();
+    expect(data.total_time_seconds).to.be.a('number').and.lessThan(15);
+    
+    if (data.results[0] && data.results[0].success) {
+      expect(data.results[0].crawl_time_seconds).to.be.lessThan(12);
+    }
+  });
+}
+
+docs {
+  # Crawl with Link Extraction
+  
+  This example demonstrates crawling with comprehensive link extraction capabilities.
+  
+  ## Link Extraction Features
+  
+  - **Internal Links**: Links within the same domain
+  - **External Links**: Links to other domains
+  - **Selective Extraction**: Choose internal, external, or both
+  - **Filtered Results**: Only valid href attributes included
+  - **Array Format**: Easy to process and analyze
+  
+  ## Link Types
+  
+  ### Internal Links
+  - Same domain as the crawled URL
+  - Relative and absolute paths
+  - Subdomain links (if same root domain)
+  - Useful for site mapping and navigation analysis
+  
+  ### External Links
+  - Different domains from the crawled URL
+  - Outbound references and citations
+  - Social media links
+  - Useful for backlink analysis and reference tracking
+  
+  ## Response with Links
+  
+  ```json
+  {
+    "total_urls": 1,
+    "successful_crawls": 1,
+    "failed_crawls": 0,
+    "cached_results": 0,
+    "results": [
+      {
+        "url": "https://example.com",
+        "success": true,
+        "markdown": "# Example Domain\n\nThis domain...",
+        "cleaned_html": "<h1>Example Domain</h1>...",
+        "metadata": {"title": "Example Domain"},
+        "internal_links": [
+          "https://example.com/about",
+          "https://example.com/contact",
+          "https://example.com/services"
+        ],
+        "external_links": [
+          "https://www.iana.org/domains",
+          "https://tools.ietf.org/html/rfc2606",
+          "https://github.com/example/project"
+        ],
+        "status_code": 200,
+        "crawl_time_seconds": 2.1
+      }
+    ],
+    "timestamp": "2024-01-01T12:00:00",
+    "total_time_seconds": 2.5
+  }
+  ```
+  
+  ## Use Cases
+  
+  - **SEO Analysis**: Internal linking structure
+  - **Content Discovery**: Find related pages
+  - **Backlink Research**: External references
+  - **Site Mapping**: Complete navigation structure
+  - **Competitor Analysis**: Outbound link patterns
+}

@@ -124,6 +124,8 @@ class TestEnvironmentBasedDocumentation:
 
     def _create_app_with_env(self, env_value: str):
         """Create FastAPI app instance with specific ENV value."""
+        from typing import Optional
+
         from pydantic_settings import BaseSettings, SettingsConfigDict
 
         from dependencies import RequiredAuth
@@ -142,6 +144,7 @@ class TestEnvironmentBasedDocumentation:
 
             API_KEY: str = Field(default="test-api-key-12345678")
             ENV: str = Field(default=env_value)
+            CRAWL4AI_API_TOKEN: Optional[str] = Field(default=None)
 
         settings = TestSettings()
 
@@ -457,7 +460,7 @@ class TestGeocodingEndpoints:
             if response.status_code == 429:
                 rate_limited_found = True
                 break  # Stop once we hit rate limit
-        
+
         # Should have hit rate limit at some point
         assert rate_limited_found, "Rate limiting should have been triggered"
 
@@ -469,11 +472,11 @@ class TestGeocodingEndpoints:
         if response1.status_code == 429:
             return  # Skip test if rate limited
         assert response1.status_code in [200, 404]
-        
+
         if response1.status_code == 200:
             data1 = response1.json()
             assert data1["cached"] is False
-            
+
             # Second request should be cached
             response2 = client.get("/geocode/city?city=Paris", headers=api_key_headers)
             if response2.status_code == 200:
@@ -604,3 +607,732 @@ class TestGeocodingEndpoints:
         if response.status_code == 503:
             data = response.json()
             assert "service temporarily unavailable" in data["detail"].lower()
+
+
+class TestCrawlingEndpoints:
+    """Integration tests for crawling endpoints."""
+
+    def test_crawl_single_url_success(self, client: TestClient, api_key_headers):
+        """Test single URL crawling (graceful handling of service downtime)."""
+        payload = {
+            "urls": ["https://example.com"],
+            "markdown_only": True,
+            "cache_mode": "enabled",
+        }
+
+        response = client.post("/crawl", json=payload, headers=api_key_headers)
+        assert response.status_code == 200
+        data = response.json()
+
+        # Always verify response structure
+        assert data["total_urls"] == 1
+        assert "successful_crawls" in data
+        assert "failed_crawls" in data
+        assert "results" in data
+        assert "cached_results" in data
+        assert "timestamp" in data
+        assert isinstance(data["results"], list)
+
+        # Verify total crawls (successful + failed should equal total)
+        assert data["successful_crawls"] + data["failed_crawls"] == data["total_urls"]
+
+        if data["results"]:
+            result = data["results"][0]
+            assert "url" in result
+            assert "success" in result
+            assert result["url"] == "https://example.com"
+
+            # If Crawl4AI service is down, we expect graceful failure
+            if not result["success"]:
+                assert "error_message" in result
+                # Service downtime is acceptable for tests
+
+    def test_crawl_multiple_urls(self, client: TestClient, api_key_headers):
+        """Test crawling multiple URLs (resilient to service downtime)."""
+        payload = {
+            "urls": ["https://example.com", "https://httpbin.org/html"],
+            "markdown_only": False,
+            "scrape_internal_links": True,
+            "scrape_external_links": True,
+        }
+
+        response = client.post("/crawl", json=payload, headers=api_key_headers)
+        assert response.status_code == 200
+        data = response.json()
+
+        # Always verify response structure
+        assert data["total_urls"] == 2
+        assert "successful_crawls" in data
+        assert "failed_crawls" in data
+        assert len(data["results"]) == 2  # Should have results for all URLs
+
+        # Verify total crawls accounting
+        assert data["successful_crawls"] + data["failed_crawls"] == data["total_urls"]
+
+        for result in data["results"]:
+            assert "url" in result
+            assert "success" in result
+            assert result["url"] in ["https://example.com", "https://httpbin.org/html"]
+
+            # Service downtime results in failed crawls, which is acceptable
+            if not result["success"]:
+                assert "error_message" in result
+
+    def test_crawl_with_screenshots(self, client: TestClient, api_key_headers):
+        """Test crawling with screenshot capture (resilient to service downtime)."""
+        payload = {
+            "urls": ["https://example.com"],
+            "capture_screenshots": True,
+            "screenshot_width": 1280,
+            "screenshot_height": 720,
+            "screenshot_wait_for": 2,
+        }
+
+        response = client.post("/crawl", json=payload, headers=api_key_headers)
+        assert response.status_code == 200
+        data = response.json()
+
+        # Always verify response structure
+        assert data["total_urls"] == 1
+        assert "successful_crawls" in data
+        assert "failed_crawls" in data
+        assert len(data["results"]) == 1
+
+        result = data["results"][0]
+        assert "url" in result
+        assert "success" in result
+
+        # If service is available and crawl succeeds, verify screenshot handling
+        if result["success"]:
+            # Screenshot may or may not be captured depending on Crawl4AI availability
+            if result.get("screenshot_base64"):
+                assert isinstance(result["screenshot_base64"], str)
+                assert "screenshot_size" in result
+        else:
+            # Service downtime is acceptable - verify error handling
+            assert "error_message" in result
+
+    def test_crawl_screenshot_dimension_validation(
+        self, client: TestClient, api_key_headers
+    ):
+        """Test screenshot dimension validation."""
+        # Too small dimensions
+        payload = {
+            "urls": ["https://example.com"],
+            "capture_screenshots": True,
+            "screenshot_width": 100,  # Below minimum 320
+            "screenshot_height": 100,  # Below minimum 240
+        }
+
+        response = client.post("/crawl", json=payload, headers=api_key_headers)
+        assert response.status_code == 422
+        data = response.json()
+        assert "detail" in data
+
+        # Too large dimensions
+        payload = {
+            "urls": ["https://example.com"],
+            "capture_screenshots": True,
+            "screenshot_width": 5000,  # Above maximum 3840
+            "screenshot_height": 3000,  # Above maximum 2160
+        }
+
+        response = client.post("/crawl", json=payload, headers=api_key_headers)
+        assert response.status_code == 422
+
+    def test_crawl_health_endpoint(self, client: TestClient, api_key_headers):
+        """Test crawling health endpoint."""
+        response = client.get("/crawl/health", headers=api_key_headers)
+        assert response.status_code == 200
+        data = response.json()
+
+        assert data["service"] == "crawling"
+        assert "status" in data
+        assert "cache_size" in data
+        assert "cache_ttl_hours" in data
+        assert "rate_limiter_active" in data
+        assert "crawl4ai_instance" in data
+
+    def test_crawl_cache_clear_endpoint(self, client: TestClient, api_key_headers):
+        """Test cache clearing endpoint."""
+        response = client.post("/crawl/cache/clear", headers=api_key_headers)
+        assert response.status_code == 200
+        data = response.json()
+
+        assert "message" in data
+        assert "cache cleared" in data["message"].lower()
+        assert "timestamp" in data
+
+    def test_crawl_authentication_required(self, client: TestClient):
+        """Test that authentication is required for crawling endpoints."""
+        payload = {"urls": ["https://example.com"]}
+
+        # Main crawl endpoint
+        response = client.post("/crawl", json=payload)
+        assert response.status_code == 401
+        data = response.json()
+        assert data["detail"] == "API key missing"
+
+        # Health endpoint
+        response = client.get("/crawl/health")
+        assert response.status_code == 401
+
+        # Cache clear endpoint
+        response = client.post("/crawl/cache/clear")
+        assert response.status_code == 401
+
+    def test_crawl_rate_limiting(self, client: TestClient, api_key_headers):
+        """Test user rate limiting for crawling endpoints."""
+        rate_limited_found = False
+
+        for i in range(10):  # Make multiple requests to trigger rate limiting
+            payload = {"urls": [f"https://example{i}.com"], "cache_mode": "disabled"}
+            response = client.post("/crawl", json=payload, headers=api_key_headers)
+
+            # Should get normal responses or rate limiting
+            assert response.status_code in [200, 429, 503]
+            if response.status_code == 429:
+                rate_limited_found = True
+                break
+
+        # Should eventually hit rate limit (5/minute)
+        assert rate_limited_found, "Rate limiting should have been triggered"
+
+    def test_crawl_caching_behavior(self, client: TestClient, api_key_headers):
+        """Test that caching works correctly (resilient to service downtime)."""
+        payload = {
+            "urls": ["https://example.com"],
+            "markdown_only": True,
+            "cache_mode": "enabled",
+        }
+
+        # First request
+        response1 = client.post("/crawl", json=payload, headers=api_key_headers)
+        if response1.status_code == 429:
+            return  # Skip if rate limited
+        assert response1.status_code == 200
+        data1 = response1.json()
+
+        # Second request should use cache (if first was successful)
+        response2 = client.post("/crawl", json=payload, headers=api_key_headers)
+        if response2.status_code == 200:
+            data2 = response2.json()
+
+            # If first request succeeded, second should use cache
+            if data1["successful_crawls"] > 0:
+                assert data2["cached_results"] >= data1["cached_results"]
+
+            # If both failed due to service downtime, both should have 0 cached results
+            if data1["successful_crawls"] == 0 and data2["successful_crawls"] == 0:
+                assert data1["cached_results"] == 0
+                assert data2["cached_results"] == 0
+
+    def test_crawl_cache_bypass(self, client: TestClient, api_key_headers):
+        """Test cache bypass functionality."""
+        payload = {
+            "urls": ["https://example.com"],
+            "markdown_only": True,
+            "cache_mode": "bypass",
+        }
+
+        # Multiple requests with bypass should not use cache
+        response1 = client.post("/crawl", json=payload, headers=api_key_headers)
+        if response1.status_code == 429:
+            return  # Skip if rate limited
+        assert response1.status_code == 200
+        data1 = response1.json()
+
+        response2 = client.post("/crawl", json=payload, headers=api_key_headers)
+        if response2.status_code == 200:
+            data2 = response2.json()
+            # Both should have 0 cached results since we're bypassing
+            assert data1["cached_results"] == 0
+            assert data2["cached_results"] == 0
+
+    def test_crawl_input_validation(self, client: TestClient, api_key_headers):
+        """Test input validation for crawling requests."""
+        # Empty URLs list
+        payload = {"urls": []}
+        response = client.post("/crawl", json=payload, headers=api_key_headers)
+        assert response.status_code == 422
+
+        # Invalid URL format
+        payload = {"urls": ["not-a-valid-url"]}
+        response = client.post("/crawl", json=payload, headers=api_key_headers)
+        assert response.status_code == 422
+
+        # Too many URLs (>10)
+        payload = {"urls": [f"https://example{i}.com" for i in range(15)]}
+        response = client.post("/crawl", json=payload, headers=api_key_headers)
+        assert response.status_code == 422
+
+    def test_crawl_invalid_cache_mode(self, client: TestClient, api_key_headers):
+        """Test invalid cache mode validation."""
+        payload = {"urls": ["https://example.com"], "cache_mode": "invalid_mode"}
+
+        response = client.post("/crawl", json=payload, headers=api_key_headers)
+        assert response.status_code == 422
+        data = response.json()
+        assert "detail" in data
+
+    def test_crawl_markdown_only_mode(self, client: TestClient, api_key_headers):
+        """Test markdown-only crawling mode (resilient to service downtime)."""
+        payload = {"urls": ["https://example.com"], "markdown_only": True}
+
+        response = client.post("/crawl", json=payload, headers=api_key_headers)
+
+        # Handle rate limiting gracefully
+        if response.status_code == 429:
+            return  # Skip test if rate limited
+
+        assert response.status_code == 200
+        data = response.json()
+
+        # Always verify response structure
+        assert data["total_urls"] == 1
+        assert "successful_crawls" in data
+        assert "failed_crawls" in data
+        assert len(data["results"]) == 1
+
+        result = data["results"][0]
+        assert "url" in result
+        assert "success" in result
+
+        # Only verify markdown-only behavior if crawl succeeded
+        if result["success"]:
+            assert "markdown" in result
+            # In markdown-only mode, these should be None or not present
+            if "cleaned_html" in result:
+                assert result["cleaned_html"] is None
+            if "metadata" in result:
+                assert result["metadata"] is None
+
+    def test_crawl_link_extraction_options(self, client: TestClient, api_key_headers):
+        """Test link extraction configuration."""
+        payload = {
+            "urls": ["https://example.com"],
+            "scrape_internal_links": True,
+            "scrape_external_links": True,
+            "markdown_only": False,
+        }
+
+        response = client.post("/crawl", json=payload, headers=api_key_headers)
+
+        # Handle rate limiting gracefully
+        if response.status_code == 429:
+            return  # Skip test if rate limited
+
+        assert response.status_code == 200
+        data = response.json()
+
+        if data["results"] and data["results"][0]["success"]:
+            result = data["results"][0]
+            # Should have link fields when link extraction is enabled
+            assert "internal_links" in result
+            assert "external_links" in result
+            assert isinstance(result["internal_links"], list)
+            assert isinstance(result["external_links"], list)
+
+    def test_crawl_router_configuration(self, client: TestClient):
+        """Test that crawling router is properly configured."""
+        # Check OpenAPI schema includes crawling endpoints
+        response = client.get("/openapi.json")
+        assert response.status_code == 200
+        openapi_schema = response.json()
+
+        # Verify crawling endpoints are under /crawl prefix
+        assert "/crawl" in openapi_schema["paths"]
+        assert "/crawl/health" in openapi_schema["paths"]
+        assert "/crawl/cache/clear" in openapi_schema["paths"]
+
+        # Verify tags are applied
+        crawl_endpoint = openapi_schema["paths"]["/crawl"]["post"]
+        assert "crawling" in crawl_endpoint["tags"]
+
+    def test_crawl_concurrent_requests(self, client: TestClient, api_key_headers):
+        """Test concurrent requests to crawling endpoint."""
+        import concurrent.futures
+
+        def make_request(url_suffix):
+            payload = {
+                "urls": [f"https://example{url_suffix}.com"],
+                "cache_mode": "disabled",
+            }
+            return client.post("/crawl", json=payload, headers=api_key_headers)
+
+        # Make concurrent requests
+        with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
+            futures = [executor.submit(make_request, i) for i in range(3)]
+            responses = [future.result() for future in futures]
+
+        # All should complete without error
+        for response in responses:
+            assert response.status_code in [200, 429, 503]
+
+    def test_crawl_service_unavailable_handling(
+        self, client: TestClient, api_key_headers
+    ):
+        """Test handling when Crawl4AI service is unavailable."""
+        payload = {"urls": ["https://example.com"], "markdown_only": True}
+
+        response = client.post("/crawl", json=payload, headers=api_key_headers)
+
+        # Should handle gracefully - return 200 with failed crawl results when service is down
+        assert response.status_code in [200, 429, 503]
+
+        if response.status_code == 200:
+            # Service downtime results in failed crawls within successful API response
+            data = response.json()
+            assert data["total_urls"] == 1
+            assert "successful_crawls" in data
+            assert "failed_crawls" in data
+
+            # If all crawls failed due to service downtime, that's acceptable
+            if data["failed_crawls"] == data["total_urls"]:
+                result = data["results"][0]
+                assert not result["success"]
+                assert "error_message" in result
+        elif response.status_code == 503:
+            data = response.json()
+            assert (
+                "service" in data["detail"].lower()
+                or "unavailable" in data["detail"].lower()
+            )
+
+    def test_crawl_error_response_format(self, client: TestClient, api_key_headers):
+        """Test that error responses follow correct format."""
+        # Test with invalid input to trigger error
+        payload = {"urls": ["invalid-url"]}
+
+        response = client.post("/crawl", json=payload, headers=api_key_headers)
+        assert response.status_code == 422
+        data = response.json()
+
+        # Should have proper error format
+        assert "detail" in data
+        # FastAPI validation errors have specific format
+
+    def test_crawl_response_headers(self, client: TestClient, api_key_headers):
+        """Test that response headers are appropriate."""
+        payload = {"urls": ["https://example.com"]}
+
+        response = client.post("/crawl", json=payload, headers=api_key_headers)
+
+        if response.status_code == 200:
+            assert response.headers["content-type"] == "application/json"
+
+    def test_crawl_recursive_basic(self, client: TestClient, api_key_headers):
+        """Test basic recursive crawling functionality."""
+        payload = {
+            "urls": ["https://example.com"],
+            "scrape_internal_links": True,
+            "follow_internal_links": True,
+            "max_depth": 2,
+            "max_pages": 5,
+            "cache_mode": "disabled",
+        }
+
+        response = client.post("/crawl", json=payload, headers=api_key_headers)
+
+        # Handle rate limiting gracefully
+        if response.status_code == 429:
+            return  # Skip test if rate limited
+
+        assert response.status_code == 200
+        data = response.json()
+
+        # Verify response structure
+        assert "total_urls" in data
+        assert "successful_crawls" in data
+        assert "failed_crawls" in data
+        assert "results" in data
+
+        # If crawl succeeded, check depth information
+        if data["successful_crawls"] > 0:
+            for result in data["results"]:
+                assert "depth" in result
+                assert isinstance(result["depth"], int)
+                assert result["depth"] >= 0
+
+    def test_crawl_recursive_validation(self, client: TestClient, api_key_headers):
+        """Test validation for recursive crawling parameters."""
+        # Test 1: follow_internal_links requires scrape_internal_links
+        payload = {
+            "urls": ["https://example.com"],
+            "scrape_internal_links": False,
+            "follow_internal_links": True,
+        }
+
+        response = client.post("/crawl", json=payload, headers=api_key_headers)
+        assert response.status_code == 422
+        data = response.json()
+        assert "detail" in data
+
+        # Test 2: follow_internal_links limits seed URLs to 3
+        payload = {
+            "urls": [
+                "https://example1.com",
+                "https://example2.com",
+                "https://example3.com",
+                "https://example4.com",
+            ],
+            "scrape_internal_links": True,
+            "follow_internal_links": True,
+        }
+
+        response = client.post("/crawl", json=payload, headers=api_key_headers)
+        assert response.status_code == 422
+
+    def test_crawl_recursive_max_depth_validation(
+        self, client: TestClient, api_key_headers
+    ):
+        """Test max_depth parameter validation."""
+        # Test max_depth too high
+        payload = {
+            "urls": ["https://example.com"],
+            "scrape_internal_links": True,
+            "follow_internal_links": True,
+            "max_depth": 10,  # Above maximum of 5
+        }
+
+        response = client.post("/crawl", json=payload, headers=api_key_headers)
+        assert response.status_code == 422
+
+        # Test max_depth too low
+        payload = {
+            "urls": ["https://example.com"],
+            "scrape_internal_links": True,
+            "follow_internal_links": True,
+            "max_depth": 0,  # Below minimum of 1
+        }
+
+        response = client.post("/crawl", json=payload, headers=api_key_headers)
+        assert response.status_code == 422
+
+    def test_crawl_recursive_max_pages_validation(
+        self, client: TestClient, api_key_headers
+    ):
+        """Test max_pages parameter validation."""
+        # Test max_pages too high
+        payload = {
+            "urls": ["https://example.com"],
+            "scrape_internal_links": True,
+            "follow_internal_links": True,
+            "max_pages": 100,  # Above maximum of 50
+        }
+
+        response = client.post("/crawl", json=payload, headers=api_key_headers)
+        assert response.status_code == 422
+
+        # Test max_pages too low
+        payload = {
+            "urls": ["https://example.com"],
+            "scrape_internal_links": True,
+            "follow_internal_links": True,
+            "max_pages": 0,  # Below minimum of 1
+        }
+
+        response = client.post("/crawl", json=payload, headers=api_key_headers)
+        assert response.status_code == 422
+
+    def test_crawl_recursive_with_screenshots(
+        self, client: TestClient, api_key_headers
+    ):
+        """Test recursive crawling with screenshots enabled."""
+        payload = {
+            "urls": ["https://example.com"],
+            "scrape_internal_links": True,
+            "follow_internal_links": True,
+            "capture_screenshots": True,
+            "screenshot_width": 1280,
+            "screenshot_height": 720,
+            "max_depth": 2,
+            "max_pages": 3,
+            "cache_mode": "disabled",
+        }
+
+        response = client.post("/crawl", json=payload, headers=api_key_headers)
+
+        # Handle rate limiting gracefully
+        if response.status_code == 429:
+            return  # Skip test if rate limited
+
+        assert response.status_code == 200
+        data = response.json()
+
+        # Verify basic structure
+        assert "total_urls" in data
+        assert "results" in data
+
+    def test_crawl_recursive_caching(self, client: TestClient, api_key_headers):
+        """Test that recursive crawling respects cache settings."""
+        payload = {
+            "urls": ["https://example.com"],
+            "scrape_internal_links": True,
+            "follow_internal_links": True,
+            "max_depth": 2,
+            "max_pages": 5,
+            "cache_mode": "enabled",
+        }
+
+        # First request
+        response1 = client.post("/crawl", json=payload, headers=api_key_headers)
+        if response1.status_code == 429:
+            return  # Skip if rate limited
+        assert response1.status_code == 200
+        data1 = response1.json()
+
+        # Second request should use cache
+        response2 = client.post("/crawl", json=payload, headers=api_key_headers)
+        if response2.status_code == 200:
+            data2 = response2.json()
+
+            # If first request had successful crawls, second should have cached results
+            if data1["successful_crawls"] > 0:
+                assert data2["cached_results"] >= data1["cached_results"]
+
+    def test_crawl_follow_external_links_validation(
+        self, client: TestClient, api_key_headers
+    ):
+        """Test validation for external link following."""
+        # Test that follow_external_links requires scrape_external_links
+        payload = {
+            "urls": ["https://example.com"],
+            "scrape_external_links": False,
+            "follow_external_links": True,
+        }
+
+        response = client.post("/crawl", json=payload, headers=api_key_headers)
+        assert response.status_code == 422
+        data = response.json()
+        assert "detail" in data
+
+    def test_crawl_follow_external_links_basic(
+        self, client: TestClient, api_key_headers
+    ):
+        """Test basic external link following functionality."""
+        payload = {
+            "urls": ["https://example.com"],
+            "scrape_external_links": True,
+            "follow_external_links": True,
+            "max_depth": 2,
+            "max_pages": 5,
+            "cache_mode": "disabled",
+        }
+
+        response = client.post("/crawl", json=payload, headers=api_key_headers)
+
+        # Handle rate limiting gracefully
+        if response.status_code == 429:
+            return  # Skip test if rate limited
+
+        assert response.status_code == 200
+        data = response.json()
+
+        # Verify response structure
+        assert "total_urls" in data
+        assert "successful_crawls" in data
+        assert "failed_crawls" in data
+        assert "results" in data
+
+        # If crawl succeeded, check depth information
+        if data["successful_crawls"] > 0:
+            for result in data["results"]:
+                assert "depth" in result
+                assert isinstance(result["depth"], int)
+                assert result["depth"] >= 0
+
+    def test_crawl_follow_both_link_types(self, client: TestClient, api_key_headers):
+        """Test following both internal and external links."""
+        payload = {
+            "urls": ["https://example.com"],
+            "scrape_internal_links": True,
+            "scrape_external_links": True,
+            "follow_internal_links": True,
+            "follow_external_links": True,
+            "max_depth": 2,
+            "max_pages": 5,
+            "cache_mode": "disabled",
+        }
+
+        response = client.post("/crawl", json=payload, headers=api_key_headers)
+
+        # Handle rate limiting gracefully
+        if response.status_code == 429:
+            return  # Skip test if rate limited
+
+        assert response.status_code == 200
+        data = response.json()
+
+        # Verify basic structure
+        assert "total_urls" in data
+        assert "results" in data
+
+        # Should handle both internal and external links
+        if data["successful_crawls"] > 0:
+            for result in data["results"]:
+                assert "depth" in result
+
+    def test_crawl_external_links_safety_validation(
+        self, client: TestClient, api_key_headers
+    ):
+        """Test safety validation for external link following."""
+        # Test depth limit for external links
+        payload = {
+            "urls": ["https://example.com"],
+            "scrape_external_links": True,
+            "follow_external_links": True,
+            "max_depth": 4,  # Too high for external links
+            "max_pages": 5,
+        }
+
+        response = client.post("/crawl", json=payload, headers=api_key_headers)
+        assert response.status_code == 422
+        error_data = response.json()
+        assert "maximum depth is 3 for security" in str(error_data)
+
+        # Test pages limit for external links
+        payload = {
+            "urls": ["https://example.com"],
+            "scrape_external_links": True,
+            "follow_external_links": True,
+            "max_depth": 2,
+            "max_pages": 25,  # Too high for external links
+        }
+
+        response = client.post("/crawl", json=payload, headers=api_key_headers)
+        assert response.status_code == 422
+        error_data = response.json()
+        assert "maximum pages is 20 for security" in str(error_data)
+
+        # Test valid external link parameters
+        payload = {
+            "urls": ["https://example.com"],
+            "scrape_external_links": True,
+            "follow_external_links": True,
+            "max_depth": 3,  # Valid for external links
+            "max_pages": 20,  # Valid for external links
+            "cache_mode": "disabled",
+        }
+
+        response = client.post("/crawl", json=payload, headers=api_key_headers)
+        # Should be accepted (200 or 429 for rate limiting)
+        assert response.status_code in [200, 429]
+
+    def test_crawl_internal_links_full_limits_allowed(
+        self, client: TestClient, api_key_headers
+    ):
+        """Test that internal link following can use full limits."""
+        # Internal links should allow full limits
+        payload = {
+            "urls": ["https://example.com"],
+            "scrape_internal_links": True,
+            "follow_internal_links": True,
+            "max_depth": 5,  # Full limit for internal links
+            "max_pages": 50,  # Full limit for internal links
+            "cache_mode": "disabled",
+        }
+
+        response = client.post("/crawl", json=payload, headers=api_key_headers)
+        # Should be accepted (200 or 429 for rate limiting)
+        assert response.status_code in [200, 429]

@@ -1,3 +1,5 @@
+from typing import Optional
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from pydantic import Field, model_validator
@@ -56,6 +58,23 @@ class Settings(BaseSettings):
     GEOCODING_USER_RATE_LIMIT: str = Field(
         default="10/minute",
         description="Rate limit for users calling geocoding endpoint",
+    )
+
+    # Crawling configuration
+    CRAWL4AI_BASE_URL: str = Field(
+        default="https://crawl4ai.test001.nl",
+        description="Base URL for Crawl4AI instance",
+    )
+    CRAWL4AI_API_TOKEN: Optional[str] = Field(
+        default=None,
+        description="Optional JWT token for Crawl4AI authentication (if enabled on instance)",
+    )
+    CRAWLING_CACHE_TTL_HOURS: int = Field(
+        default=1, description="Cache TTL for crawling results in hours"
+    )
+    CRAWLING_USER_RATE_LIMIT: str = Field(
+        default="5/minute",
+        description="Rate limit for users calling crawling endpoints",
     )
 
     @model_validator(mode="after")

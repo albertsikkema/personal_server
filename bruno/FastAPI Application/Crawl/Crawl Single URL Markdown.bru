@@ -1,0 +1,144 @@
+meta {
+  name: Crawl Single URL Markdown
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/crawl
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "urls": ["https://albertsikkema.com"],
+    "markdown_only": true,
+    "scrape_internal_links": false,
+    "scrape_external_links": false,
+    "capture_screenshots": false,
+    "cache_mode": "enabled"
+  }
+}
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  
+  test("Response structure for single URL", function() {
+    const data = res.getBody();
+    expect(data).to.have.property('total_urls');
+    expect(data).to.have.property('successful_crawls');
+    expect(data).to.have.property('failed_crawls');
+    expect(data).to.have.property('cached_results');
+    expect(data).to.have.property('results');
+    expect(data).to.have.property('timestamp');
+    expect(data).to.have.property('total_time_seconds');
+    
+    expect(data.total_urls).to.equal(1);
+    expect(data.results).to.be.an('array').with.length(1);
+  });
+  
+  test("Markdown only mode validation", function() {
+    const data = res.getBody();
+    
+    if (data.results.length > 0) {
+      const result = data.results[0];
+      expect(result).to.have.property('url');
+      expect(result).to.have.property('success');
+      expect(result.url).to.equal("https://albertsikkema.com");
+      
+      if (result.success) {
+        // Should have markdown content
+        expect(result).to.have.property('markdown');
+        expect(result.markdown).to.be.a('string');
+        expect(result.markdown.length).to.be.greaterThan(0);
+        
+        // Should have basic fields
+        expect(result).to.have.property('status_code');
+        expect(result).to.have.property('crawl_time_seconds');
+        expect(result.status_code).to.be.a('number').and.within(200, 299);
+        expect(result.crawl_time_seconds).to.be.a('number').and.greaterThan(0);
+        
+        // In markdown-only mode, these should be null
+        expect(result.cleaned_html).to.be.null;
+        expect(result.metadata).to.be.null;
+        expect(result.internal_links).to.be.null;
+        expect(result.external_links).to.be.null;
+        expect(result.screenshot_base64).to.be.null;
+        expect(result.screenshot_size).to.be.null;
+      } else {
+        expect(result).to.have.property('error_message');
+        expect(result.error_message).to.be.a('string');
+      }
+    }
+  });
+  
+  test("Performance and efficiency", function() {
+    const data = res.getBody();
+    
+    // Markdown-only mode should be faster
+    expect(data.total_time_seconds).to.be.a('number').and.lessThan(10);
+    
+    if (data.results[0] && data.results[0].success) {
+      expect(data.results[0].crawl_time_seconds).to.be.lessThan(8);
+    }
+  });
+  
+  test("Cache behavior validation", function() {
+    const data = res.getBody();
+    expect(data.cached_results).to.be.a('number').and.at.least(0);
+    // With cache_mode: "enabled", subsequent requests may be cached
+  });
+}
+
+docs {
+  # Crawl Single URL (Markdown Only)
+  
+  This example shows markdown-only crawling for a single URL.
+  
+  ## Key Features
+  
+  - **Markdown Only**: Returns only markdown content
+  - **No HTML/Metadata**: Excludes cleaned_html and metadata fields
+  - **Fast Processing**: Minimal content extraction
+  - **Caching Enabled**: Results cached for 1 hour
+  
+  ## Use Cases
+  
+  - Content analysis and summarization
+  - Blog post extraction
+  - Documentation scraping
+  - Text-only content processing
+  
+  ## Response (Markdown Only)
+  
+  ```json
+  {
+    "total_urls": 1,
+    "successful_crawls": 1,
+    "failed_crawls": 0,
+    "cached_results": 0,
+    "results": [
+      {
+        "url": "https://example.com",
+        "success": true,
+        "markdown": "# Example Domain\n\nThis domain is for use in illustrative examples...",
+        "cleaned_html": null,
+        "metadata": null,
+        "internal_links": null,
+        "external_links": null,
+        "status_code": 200,
+        "crawl_time_seconds": 1.2
+      }
+    ],
+    "timestamp": "2024-01-01T12:00:00",
+    "total_time_seconds": 1.5
+  }
+  ```
+}

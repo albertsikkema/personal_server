@@ -280,14 +280,14 @@ async def test_multiple_results_uses_first():
             "lat": "52.520008",
             "lon": "13.404954",
             "display_name": "Berlin, Germany",
-            "place_id": "12345"
+            "place_id": "12345",
         },
         {
             "lat": "52.6",
             "lon": "13.5",
             "display_name": "Berlin, Other Country",
-            "place_id": "67890"
-        }
+            "place_id": "67890",
+        },
     ]
 
     with patch("httpx.AsyncClient") as mock_client:

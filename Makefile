@@ -26,7 +26,11 @@ venv:
 	@echo "Virtual environment created. Activate with: source venv/bin/activate"
 
 # Complete setup from scratch
-setup: venv
+setup: 
+	@echo "Setting up the project..."
+	@echo "Creating virtual environment..."
+	python -m venv venv
+	@echo "Activating virtual environment and installing dependencies..."
 	source venv/bin/activate && pip install --upgrade pip
 	source venv/bin/activate && pip install -r requirements.txt
 	@echo "Setup complete! Run 'make run' to start the server"

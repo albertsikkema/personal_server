@@ -1,0 +1,78 @@
+meta {
+  name: Clear Crawling Cache
+  type: http
+  seq: 6
+}
+
+post {
+  url: {{baseUrl}}/crawl/cache/clear
+  body: none
+  auth: none
+}
+
+
+tests {
+  test("Status code is 200", function() {
+    expect(res.getStatus()).to.equal(200);
+  });
+  
+  test("Cache clear response structure", function() {
+    const data = res.getBody();
+    
+    expect(data).to.have.property('message');
+    expect(data.message).to.be.a('string');
+    expect(data.message.toLowerCase()).to.include('cache cleared');
+    
+    expect(data).to.have.property('cleared_entries');
+    expect(data.cleared_entries).to.be.a('number');
+    expect(data.cleared_entries).to.be.at.least(0);
+    
+    expect(data).to.have.property('timestamp');
+    expect(data.timestamp).to.be.a('string');
+    expect(data.timestamp).to.match(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/);
+  });
+  
+  test("Success message validation", function() {
+    const data = res.getBody();
+    const expectedEntries = data.cleared_entries;
+    expect(data.message).to.include(expectedEntries.toString());
+  });
+}
+
+docs {
+  # Clear Crawling Cache
+  
+  This endpoint clears all cached crawling results, forcing fresh crawls for subsequent requests.
+  
+  ## Use Cases
+  
+  - **Fresh Data**: Ensure latest content when pages have updated
+  - **Cache Management**: Clean up stale entries manually  
+  - **Testing**: Reset cache state for testing scenarios
+  - **Debugging**: Clear cache when troubleshooting issues
+  - **Memory Management**: Free up cache memory space
+  
+  ## Cache Impact
+  
+  - **Immediate Effect**: All cached results removed instantly
+  - **Performance**: Next requests will be slower (fresh crawls)
+  - **Rate Limiting**: May trigger more external API calls
+  - **Statistics**: Cache size returns to 0
+  
+  ## Response Structure
+  
+  ```json
+  {
+    "message": "Cache cleared successfully. 42 entries removed.",
+    "cleared_entries": 42,
+    "timestamp": "2024-01-01T12:00:00"
+  }
+  ```
+  
+  ## Administrative Notes
+  
+  - This operation is immediate and irreversible
+  - Consider the performance impact on subsequent requests
+  - Monitor rate limiting after cache clears
+  - Use judiciously in production environments
+}

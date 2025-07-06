@@ -125,7 +125,7 @@ async def geocode_city(
         logger.error(f"Geocoding service error for city '{city}': {e!s}")
         raise HTTPException(
             status_code=503, detail="Geocoding service temporarily unavailable"
-        )
+        ) from e
 
 
 @router.get("/health")
@@ -169,7 +169,7 @@ async def geocoding_health(request: Request):
         logger.error(f"Geocoding health check failed: {e!s}")
         raise HTTPException(
             status_code=503, detail="Geocoding service health check failed"
-        )
+        ) from e
 
 
 @router.post("/cache/clear")
@@ -210,4 +210,6 @@ async def clear_geocoding_cache(request: Request):
 
     except Exception as e:
         logger.error(f"Cache clear failed: {e!s}")
-        raise HTTPException(status_code=503, detail="Failed to clear geocoding cache")
+        raise HTTPException(
+            status_code=503, detail="Failed to clear geocoding cache"
+        ) from e
