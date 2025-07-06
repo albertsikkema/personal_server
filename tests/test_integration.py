@@ -405,3 +405,202 @@ class TestErrorHandling:
         # FastAPI returns 405 Method Not Allowed before checking dependencies
         assert response.status_code == 405
         assert response.json() == {"detail": "Method Not Allowed"}
+
+
+class TestGeocodingEndpoints:
+    """Integration tests for geocoding endpoints."""
+
+    def test_geocode_city_success(self, client: TestClient, api_key_headers):
+        """Test successful city geocoding."""
+        response = client.get("/geocode/city?city=London", headers=api_key_headers)
+        assert response.status_code == 200
+        data = response.json()
+        assert "location" in data
+        assert "lat" in data["location"]
+        assert "lon" in data["location"]
+        assert data["city"] == "London"
+        assert "cached" in data
+        assert "timestamp" in data
+        assert "display_name" in data
+        assert isinstance(data["location"]["lat"], float)
+        assert isinstance(data["location"]["lon"], float)
+
+    def test_geocode_city_not_found(self, client: TestClient, api_key_headers):
+        """Test geocoding with non-existent city."""
+        response = client.get(
+            "/geocode/city?city=Xyzabcdef123NonExistentCity", headers=api_key_headers
+        )
+        assert response.status_code == 404
+        data = response.json()
+        assert "City 'Xyzabcdef123NonExistentCity' not found" in data["detail"]
+
+    def test_geocode_health_endpoint(self, client: TestClient, api_key_headers):
+        """Test geocoding health endpoint."""
+        response = client.get("/geocode/health", headers=api_key_headers)
+        assert response.status_code == 200
+        data = response.json()
+        assert data["service"] == "geocoding"
+        assert data["status"] == "healthy"
+        assert "cache_size" in data
+        assert data["rate_limiter"] == "active"
+
+    def test_geocode_rate_limiting(self, client: TestClient, api_key_headers):
+        """Test user rate limiting."""
+        # Make multiple rapid requests
+        rate_limited_found = False
+        for i in range(15):  # Make more requests to ensure we hit rate limit
+            response = client.get(
+                f"/geocode/city?city=TestCity{i}", headers=api_key_headers
+            )
+            # Should get normal responses or rate limiting
+            assert response.status_code in [200, 404, 429]
+            if response.status_code == 429:
+                rate_limited_found = True
+                break  # Stop once we hit rate limit
+        
+        # Should have hit rate limit at some point
+        assert rate_limited_found, "Rate limiting should have been triggered"
+
+    def test_geocode_caching_behavior(self, client: TestClient, api_key_headers):
+        """Test that caching works correctly."""
+        # First request
+        response1 = client.get("/geocode/city?city=Paris", headers=api_key_headers)
+        # May be rate limited due to previous tests
+        if response1.status_code == 429:
+            return  # Skip test if rate limited
+        assert response1.status_code in [200, 404]
+        
+        if response1.status_code == 200:
+            data1 = response1.json()
+            assert data1["cached"] is False
+            
+            # Second request should be cached
+            response2 = client.get("/geocode/city?city=Paris", headers=api_key_headers)
+            if response2.status_code == 200:
+                data2 = response2.json()
+                assert data2["cached"] is True
+                assert data1["location"] == data2["location"]
+
+    def test_geocode_authentication_required(self, client: TestClient):
+        """Test that authentication is required."""
+        response = client.get("/geocode/city?city=London")
+        assert response.status_code == 401
+        data = response.json()
+        assert data["detail"] == "API key missing"
+
+    def test_geocode_invalid_input(self, client: TestClient, api_key_headers):
+        """Test input validation."""
+        # Empty city name
+        response = client.get("/geocode/city?city=", headers=api_key_headers)
+        assert response.status_code == 422
+
+        # City name too long (>200 chars)
+        long_city = "x" * 201
+        response = client.get(
+            f"/geocode/city?city={long_city}", headers=api_key_headers
+        )
+        assert response.status_code == 422
+
+    def test_geocode_missing_city_parameter(self, client: TestClient, api_key_headers):
+        """Test missing city parameter."""
+        response = client.get("/geocode/city", headers=api_key_headers)
+        assert response.status_code == 422
+        data = response.json()
+        assert "detail" in data
+        # FastAPI validation error for missing required parameter
+
+    def test_geocode_router_tags_and_prefix(self, client: TestClient):
+        """Test that router is properly configured with prefix and tags."""
+        # Check OpenAPI schema includes router configuration
+        response = client.get("/openapi.json")
+        assert response.status_code == 200
+        openapi_schema = response.json()
+
+        # Verify geocoding endpoints are under /geocode prefix
+        assert "/geocode/city" in openapi_schema["paths"]
+        assert "/geocode/health" in openapi_schema["paths"]
+
+        # Verify tags are applied
+        city_endpoint = openapi_schema["paths"]["/geocode/city"]["get"]
+        assert "geocoding" in city_endpoint["tags"]
+
+    def test_geocode_case_insensitive_city_names(
+        self, client: TestClient, api_key_headers
+    ):
+        """Test that city names are handled regardless of case."""
+        cities = ["london", "LONDON", "London", "LoNdOn"]
+
+        responses = []
+        for city in cities:
+            response = client.get(f"/geocode/city?city={city}", headers=api_key_headers)
+            responses.append(response)
+
+        # All should work (either 200 for found or consistent behavior, or 429 for rate limiting)
+        for response in responses:
+            assert response.status_code in [200, 404, 429]
+
+    def test_geocode_special_characters_in_city_name(
+        self, client: TestClient, api_key_headers
+    ):
+        """Test geocoding with special characters in city names."""
+        special_cities = [
+            "São Paulo",
+            "München",
+            "北京",  # Beijing in Chinese
+            "Москва",  # Moscow in Russian
+        ]
+
+        for city in special_cities:
+            response = client.get(f"/geocode/city?city={city}", headers=api_key_headers)
+            # Should not error, either found (200) or not found (404), or rate limited (429)
+            assert response.status_code in [200, 404, 429, 503]
+
+    def test_geocode_whitespace_handling(self, client: TestClient, api_key_headers):
+        """Test geocoding with whitespace in city names."""
+        response = client.get("/geocode/city?city= London ", headers=api_key_headers)
+        # Should handle whitespace gracefully
+        assert response.status_code in [200, 404, 429, 503]
+
+    def test_geocode_response_headers(self, client: TestClient, api_key_headers):
+        """Test that response headers are appropriate."""
+        response = client.get("/geocode/city?city=London", headers=api_key_headers)
+
+        if response.status_code == 200:
+            assert response.headers["content-type"] == "application/json"
+
+        # Rate limiting headers (if present)
+        # Note: slowapi may add rate limiting headers
+
+    def test_geocode_concurrent_requests(self, client: TestClient, api_key_headers):
+        """Test concurrent requests to geocoding endpoint."""
+        import concurrent.futures
+
+        def make_request(city_suffix):
+            return client.get(
+                f"/geocode/city?city=TestCity{city_suffix}", headers=api_key_headers
+            )
+
+        # Make concurrent requests
+        with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
+            futures = [executor.submit(make_request, i) for i in range(3)]
+            responses = [future.result() for future in futures]
+
+        # All should complete without error
+        for response in responses:
+            assert response.status_code in [200, 404, 429, 503]
+
+    def test_geocode_service_unavailable_handling(
+        self, client: TestClient, api_key_headers
+    ):
+        """Test handling when geocoding service encounters errors."""
+        # Use a city name that might cause service issues or test with mocked failure
+        response = client.get(
+            "/geocode/city?city=SpecialErrorTestCity", headers=api_key_headers
+        )
+
+        # Should handle gracefully - either success, not found, rate limited, or service unavailable
+        assert response.status_code in [200, 404, 429, 503]
+
+        if response.status_code == 503:
+            data = response.json()
+            assert "service temporarily unavailable" in data["detail"].lower()

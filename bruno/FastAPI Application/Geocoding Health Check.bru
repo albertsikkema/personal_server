@@ -1,0 +1,36 @@
+meta {
+  name: Geocoding Health Check
+  type: http
+  seq: 6
+}
+
+get {
+  url: {{baseUrl}}/geocode/health
+  body: none
+  auth: none
+}
+
+headers {
+  X-API-KEY: {{X-API-KEY}}
+}
+
+docs {
+  # Geocoding Health Check
+  
+  Provides status information about the geocoding service including cache statistics and service availability.
+  
+  ## Rate Limits
+  - 60 requests per minute per IP
+  
+  ## Response Example
+  ```json
+  {
+    "service": "geocoding",
+    "status": "healthy",
+    "cache_size": 42,
+    "cache_ttl_hours": 24,
+    "rate_limiter_active": true,
+    "user_agent": "FastAPI Application/1.0"
+  }
+  ```
+}

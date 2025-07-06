@@ -1,0 +1,48 @@
+meta {
+  name: Geocode City
+  type: http
+  seq: 5
+}
+
+get {
+  url: {{baseUrl}}/geocode/city?city=London
+  body: none
+  auth: none
+}
+
+params:query {
+  city: London
+}
+
+headers {
+  X-API-KEY: {{X-API-KEY}}
+}
+
+docs {
+  # Geocode City
+  
+  Converts a city name to geographic coordinates using the Nominatim service.
+  
+  ## Parameters
+  - `city` (string, required): City name to geocode (1-200 characters)
+  
+  ## Rate Limits
+  - User limit: 10 requests per minute per IP
+  - Nominatim API: 1 request per second (handled internally)
+  
+  ## Response Example
+  ```json
+  {
+    "city": "London",
+    "location": {
+      "lat": 51.5074,
+      "lon": -0.1278
+    },
+    "display_name": "London, Greater London, England, United Kingdom",
+    "place_id": 12345,
+    "boundingbox": [51.2868, 51.6918, -0.5103, 0.3340],
+    "timestamp": "2024-01-01T12:00:00+00:00",
+    "cached": false
+  }
+  ```
+}

@@ -1,10 +1,15 @@
 from datetime import datetime, timezone
 
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
+
 from config import settings
 from dependencies import AuthHTTPException, RequiredAuth
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from routers import geocoding
 from utils.logging import get_logger, setup_logging
 
 # Initialize logging configuration
@@ -29,6 +34,22 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+)
+
+# Initialize global rate limiter
+limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+# Include routers
+app.include_router(
+    geocoding.router,
+    responses={
+        401: {"description": "Authentication required"},
+        404: {"description": "City not found"},
+        429: {"description": "Rate limit exceeded"},
+        503: {"description": "Service unavailable"},
+    },
 )
 
 

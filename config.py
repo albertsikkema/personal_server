@@ -49,6 +49,15 @@ class Settings(BaseSettings):
         description="Use JSON format for file logs",
     )
 
+    # Geocoding configuration
+    GEOCODING_CACHE_TTL_HOURS: int = Field(
+        default=24, description="Cache TTL for geocoding results in hours"
+    )
+    GEOCODING_USER_RATE_LIMIT: str = Field(
+        default="10/minute",
+        description="Rate limit for users calling geocoding endpoint",
+    )
+
     @model_validator(mode="after")
     def validate_api_key(self):
         """Validate API key requirements."""

@@ -1,0 +1,32 @@
+meta {
+  name: Clear Geocoding Cache
+  type: http
+  seq: 7
+}
+
+post {
+  url: {{baseUrl}}/geocode/cache/clear
+  body: none
+  auth: none
+}
+
+headers {
+  X-API-KEY: {{X-API-KEY}}
+}
+
+docs {
+  # Clear Geocoding Cache
+  
+  Administrative endpoint to clear all cached geocoding results. Use sparingly as this will increase API calls to Nominatim.
+  
+  ## Rate Limits
+  - 10 requests per hour per IP
+  
+  ## Response Example
+  ```json
+  {
+    "message": "Geocoding cache cleared",
+    "timestamp": "2024-01-01T12:00:00+00:00"
+  }
+  ```
+}
