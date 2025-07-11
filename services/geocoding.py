@@ -11,8 +11,7 @@ CRITICAL: Must comply with Nominatim usage policy:
 - Must cache results to minimize API calls
 """
 
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import UTC, datetime
 
 import httpx
 
@@ -53,7 +52,7 @@ class GeocodingService:
             f"{settings.GEOCODING_CACHE_TTL_HOURS}h, user-agent: {self.user_agent}"
         )
 
-    async def geocode_city(self, city: str) -> Optional[GeocodingResponse]:
+    async def geocode_city(self, city: str) -> GeocodingResponse | None:
         """
         Geocode a city name to coordinates using Nominatim HTTP API.
 
@@ -139,7 +138,7 @@ class GeocodingService:
                     if result.get("place_id")
                     else None,
                     boundingbox=boundingbox,
-                    timestamp=datetime.now(timezone.utc).isoformat(),
+                    timestamp=datetime.now(UTC).isoformat(),
                     cached=False,
                 )
 

@@ -11,7 +11,6 @@ API requests for recently queried cities.
 
 import hashlib
 from datetime import datetime, timedelta
-from typing import Optional
 
 from utils.logging import get_logger
 
@@ -59,7 +58,7 @@ class GeocodingCache:
         normalized = city.lower().strip()
         return hashlib.md5(normalized.encode()).hexdigest()
 
-    def get(self, city: str) -> Optional[dict]:
+    def get(self, city: str) -> dict | None:
         """
         Get cached result if exists and not expired.
 

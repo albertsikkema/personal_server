@@ -12,7 +12,7 @@ import logging
 import os
 import re
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import Any
@@ -47,7 +47,7 @@ class JSONFormatter(logging.Formatter):
             JSON-formatted log string
         """
         log_data: dict[str, Any] = {
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
             "level": record.levelname,
             "logger": record.name,
             "message": self._sanitize_message(record.getMessage()),

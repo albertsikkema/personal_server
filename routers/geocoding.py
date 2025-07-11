@@ -10,7 +10,7 @@ All endpoints require API key authentication and implement user rate limiting
 in addition to the Nominatim API rate limiting handled by the service layer.
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from slowapi import Limiter
 from slowapi.util import get_remote_address
@@ -205,7 +205,7 @@ async def clear_geocoding_cache(request: Request):
 
         return {
             "message": "Geocoding cache cleared",
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
         }
 
     except Exception as e:

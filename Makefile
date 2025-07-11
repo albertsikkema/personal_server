@@ -1,7 +1,7 @@
 # FastAPI Project Makefile
 # Common commands for development workflow
 
-.PHONY: help install run dev test lint format check clean setup sync
+.PHONY: help install run dev test lint format check clean setup sync check-commit security
 
 # Default target
 help:
@@ -18,6 +18,8 @@ help:
 	@echo "  check     - Run linter and formatter check"
 	@echo "  fix       - Auto-fix linting issues and format code"
 	@echo "  quality   - Run complete code quality workflow"
+	@echo "  check-commit - Run quality checks without fixes (CI-safe)"
+	@echo "  security  - Run security scans (safety, bandit, semgrep)"
 	@echo "  clean     - Clean up cache and temporary files"
 
 # Complete setup from scratch
@@ -83,6 +85,18 @@ clean:
 # Update dependencies
 update:
 	uv sync --upgrade
+
+# Check code quality without making changes (CI-safe)
+check-commit: check test
+	@echo "Code quality check complete (no fixes applied)!"
+
+# Security scanning
+security:
+	@echo "Running security scans..."
+	uv add --dev safety bandit semgrep
+	uv run safety check --json --output security-report.json
+	uv run bandit -r . -f json -o bandit-report.json -x tests/
+	uv run semgrep --config=auto --json --output=semgrep-report.json
 
 # Test MCP server
 test-mcp:

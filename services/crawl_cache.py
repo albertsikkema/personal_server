@@ -8,7 +8,7 @@ Cache keys include all crawling options to ensure proper cache isolation.
 import hashlib
 import json
 from datetime import datetime, timedelta
-from typing import Any, Optional
+from typing import Any
 
 from config import settings
 
@@ -21,7 +21,7 @@ class CrawlingCache:
     different configurations don't interfere with each other.
     """
 
-    def __init__(self, ttl_hours: Optional[int] = None):
+    def __init__(self, ttl_hours: int | None = None):
         """
         Initialize the crawling cache.
 
@@ -100,7 +100,7 @@ class CrawlingCache:
         cache_string = json.dumps(cache_data, sort_keys=True, separators=(",", ":"))
         return hashlib.md5(cache_string.encode()).hexdigest()
 
-    def get(self, url: str, options: dict[str, Any]) -> Optional[dict[str, Any]]:
+    def get(self, url: str, options: dict[str, Any]) -> dict[str, Any] | None:
         """
         Retrieve cached crawling result.
 
@@ -222,7 +222,7 @@ class CrawlingCache:
             "expired_entries": self._count_expired_entries(),
         }
 
-    def _get_oldest_entry_age(self) -> Optional[float]:
+    def _get_oldest_entry_age(self) -> float | None:
         """
         Get age of oldest cache entry in minutes.
 

@@ -10,7 +10,6 @@ CRITICAL: Nominatim policy requires max 1 request per second to prevent IP bans.
 
 import asyncio
 import time
-from typing import Optional
 
 from utils.logging import get_logger
 
@@ -39,7 +38,7 @@ class RateLimiter:
         """
         self.max_requests = max_requests
         self.time_window = time_window  # in seconds
-        self.last_request_time: Optional[float] = None
+        self.last_request_time: float | None = None
         self._lock = asyncio.Lock()
 
         logger.debug(

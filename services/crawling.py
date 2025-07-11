@@ -9,7 +9,7 @@ import asyncio
 import base64
 import struct
 import time
-from typing import Any, Optional
+from typing import Any
 from urllib.parse import urljoin, urlparse, urlunparse
 
 import httpx
@@ -49,7 +49,7 @@ class CrawlingService:
         # HTTP timeout settings
         self.timeout = httpx.Timeout(30.0, connect=10.0)
 
-    def _build_headers(self, content_type: Optional[str] = None) -> dict[str, str]:
+    def _build_headers(self, content_type: str | None = None) -> dict[str, str]:
         """
         Build HTTP headers for Crawl4AI requests.
 
@@ -626,7 +626,7 @@ class CrawlingService:
                 depth=depth,
             )
 
-    def _get_png_dimensions(self, png_data: bytes) -> Optional[dict[str, int]]:
+    def _get_png_dimensions(self, png_data: bytes) -> dict[str, int] | None:
         """
         Extract dimensions from PNG file headers without using Pillow.
 
@@ -786,7 +786,7 @@ class CrawlingService:
 
 
 # Global service instance
-_crawling_service: Optional[CrawlingService] = None
+_crawling_service: CrawlingService | None = None
 
 
 def get_crawling_service() -> CrawlingService:

@@ -5,8 +5,6 @@ This module defines the data models used for geocoding requests and responses,
 including validation rules and serialization formats.
 """
 
-from typing import Optional
-
 from pydantic import BaseModel, Field
 
 
@@ -76,10 +74,10 @@ class GeocodingResponse(BaseModel):
         description="Full formatted address from geocoding service",
         examples=["London, Greater London, England, United Kingdom"],
     )
-    place_id: Optional[int] = Field(
+    place_id: int | None = Field(
         None, description="Nominatim place ID", examples=[12345]
     )
-    boundingbox: Optional[list[float]] = Field(
+    boundingbox: list[float] | None = Field(
         None,
         description="Bounding box [min_lat, max_lat, min_lon, max_lon]",
         min_length=4,

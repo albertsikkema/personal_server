@@ -124,7 +124,6 @@ class TestEnvironmentBasedDocumentation:
 
     def _create_app_with_env(self, env_value: str):
         """Create FastAPI app instance with specific ENV value."""
-        from typing import Optional
 
         from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -144,7 +143,7 @@ class TestEnvironmentBasedDocumentation:
 
             API_KEY: str = Field(default="test-api-key-12345678")
             ENV: str = Field(default=env_value)
-            CRAWL4AI_API_TOKEN: Optional[str] = Field(default=None)
+            CRAWL4AI_API_TOKEN: str | None = Field(default=None)
 
         settings = TestSettings()
 

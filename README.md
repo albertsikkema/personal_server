@@ -959,6 +959,207 @@ def test_new_attack_vector(self, client: TestClient):
     assert "request_id" in data
 ```
 
+## 🚀 CI/CD Pipeline
+
+This project includes a comprehensive CI/CD pipeline using GitHub Actions that ensures code quality, security, and reliability on every commit and pull request.
+
+### Pipeline Overview
+
+The CI/CD system consists of two main workflows:
+
+1. **Quality & Testing**: Runs on code changes to ensure code quality and test coverage
+2. **Security**: Performs vulnerability scanning and security analysis
+
+### Quality Workflow
+
+The quality workflow (`.github/workflows/quality.yml`) runs on every push and pull request to `main` and `dev` branches:
+
+#### Features
+- **Smart Path Filtering**: Only runs when relevant files change (Python, config, workflows)
+- **Matrix Testing**: Tests across Python versions 3.11, 3.12, and 3.13
+- **Fast Dependency Management**: Uses uv for 10-100x faster dependency resolution
+- **Intelligent Caching**: Caches dependencies and uv cache for faster builds
+- **CI-Safe Quality Checks**: Uses `make check-commit` (no auto-fixes in CI)
+
+#### Workflow Jobs
+
+1. **Change Detection**: Determines if Python code or documentation changed
+2. **Code Quality**: Runs linting, formatting checks, and tests
+3. **Test Matrix**: Runs tests across multiple Python versions
+4. **Build Check**: Validates application startup and health endpoint
+
+#### Example Run
+```yaml
+✅ Code Quality (Python 3.13)
+├── Install uv and dependencies
+├── Run make check-commit
+├── Upload coverage reports
+└── Complete in ~2 minutes
+
+✅ Test Matrix (Python 3.11, 3.12, 3.13)
+├── Run full test suite (160 tests)
+├── Upload coverage to Codecov
+└── Complete in ~3 minutes
+
+✅ Build Check
+├── Validate application imports
+├── Test server startup
+└── Complete in ~1 minute
+```
+
+### Security Workflow
+
+The security workflow (`.github/workflows/security.yml`) performs comprehensive security analysis:
+
+#### Features
+- **Dependency Review**: Automated dependency vulnerability scanning on PRs
+- **Multi-Tool Security Scanning**: Uses safety, bandit, and semgrep
+- **Scheduled Scanning**: Weekly security scans on Monday
+- **Graceful Failure Handling**: Non-critical scans use `continue-on-error`
+
+#### Security Tools
+
+1. **Safety**: Python package vulnerability scanner
+2. **Bandit**: Common security issue detection in Python code
+3. **Semgrep**: Advanced static analysis for security patterns
+4. **Dependency Review**: GitHub's built-in dependency vulnerability scanner
+
+#### Workflow Jobs
+
+1. **Dependency Review**: Runs only on pull requests, fails on moderate+ severity
+2. **Security Scan**: Comprehensive security analysis using `make security`
+3. **Vulnerability Scan**: Dedicated package vulnerability scanning
+4. **Code Security Scan**: Static analysis for security patterns
+
+### Automated Dependency Management
+
+The project includes Dependabot configuration (`.github/dependabot.yml`) for automated dependency updates:
+
+- **Weekly Updates**: Automatically checks for dependency updates
+- **Managed PRs**: Limits to 10 open PRs at a time
+- **Conventional Commits**: Uses proper commit message format
+
+### Performance & Optimization
+
+#### Build Performance
+- **uv Caching**: Dramatically faster dependency resolution and installation
+- **Path-Based Filtering**: Only runs workflows when relevant files change
+- **Parallel Jobs**: Quality and security checks run concurrently
+- **Optimized Caching**: Smart cache invalidation strategies
+
+#### Typical Build Times
+- **Quality Workflow**: ~5 minutes (includes all Python versions)
+- **Security Workflow**: ~3 minutes (includes all security scans)
+- **Cache Hit**: ~2 minutes (when dependencies unchanged)
+
+### Local Development Integration
+
+The CI/CD pipeline uses the same commands available locally:
+
+```bash
+# Same command used in CI quality workflow
+make check-commit
+
+# Same command used in CI security workflow  
+make security
+
+# Test the complete quality workflow locally
+make quality
+```
+
+### Status Checks & Branch Protection
+
+The following status checks are recommended for branch protection:
+
+- `Quality & Testing / Code Quality`
+- `Quality & Testing / Test Matrix (3.11)`
+- `Quality & Testing / Test Matrix (3.12)`
+- `Quality & Testing / Test Matrix (3.13)`
+- `Quality & Testing / Build Check`
+- `Security / Dependency Review` (PRs only)
+
+### Artifacts & Reports
+
+The workflows generate several artifacts for debugging and monitoring:
+
+#### Quality Artifacts
+- **Coverage Reports**: HTML coverage reports (30-day retention)
+- **Test Results**: Detailed test output and timing
+
+#### Security Artifacts
+- **Security Reports**: JSON reports from safety, bandit, semgrep
+- **Vulnerability Reports**: Dependency vulnerability analysis
+- **Code Security Reports**: Static analysis results
+
+### Monitoring & Alerts
+
+The CI/CD system provides comprehensive monitoring:
+
+#### GitHub Integration
+- **Status Checks**: Pass/fail status on PRs and commits
+- **Notifications**: Email alerts for workflow failures
+- **Dashboard**: GitHub Actions dashboard for workflow monitoring
+
+#### Coverage Tracking
+- **Codecov Integration**: Automatic coverage reporting
+- **Coverage Trends**: Track coverage changes over time
+- **PR Coverage**: Coverage diff on pull requests
+
+### Configuration Files
+
+The CI/CD system uses these configuration files:
+
+- `.github/workflows/quality.yml`: Main quality and testing workflow
+- `.github/workflows/security.yml`: Security scanning workflow
+- `.github/dependabot.yml`: Dependency update configuration
+- `Makefile`: Commands used by both local development and CI
+
+### Troubleshooting
+
+#### Common Issues
+
+1. **Linting Failures**: Run `make fix` locally to auto-fix issues
+2. **Test Failures**: Run `make test` locally to reproduce issues
+3. **Security Scan Failures**: Review security reports in workflow artifacts
+4. **Build Timeouts**: Check for dependency resolution issues
+
+#### Debug Commands
+
+```bash
+# Validate workflow YAML syntax
+uv run python -c "import yaml; yaml.safe_load(open('.github/workflows/quality.yml'))"
+
+# Test make targets locally
+make check-commit
+make security
+
+# Check workflow file paths
+find .github -name "*.yml" -o -name "*.yaml"
+```
+
+### Best Practices
+
+#### For Developers
+1. Always run `make quality` before pushing code
+2. Keep PRs small to reduce CI/CD time
+3. Add tests for new features to maintain coverage
+4. Update documentation when adding new features
+
+#### For Maintainers
+1. Monitor workflow failure patterns
+2. Update security scanning tools regularly
+3. Review and merge Dependabot PRs promptly
+4. Keep workflow files updated with latest actions
+
+### Future Enhancements
+
+The CI/CD pipeline is designed for extensibility:
+
+- **Deployment Automation**: Ready for automatic deployment workflows
+- **Release Automation**: Semantic versioning and automated releases
+- **Performance Testing**: Load testing integration
+- **Multi-Environment**: Support for staging and production environments
+
 ## License
 
 This project is proprietary software developed for internal company use only. All rights reserved. Distribution, modification, or sharing outside the company is strictly prohibited.

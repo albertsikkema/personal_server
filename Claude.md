@@ -1295,3 +1295,271 @@ test-mcp:
 3. **Maintainable**: Changes to geocoding service automatically reflected in MCP
 4. **Follows Architecture**: Maintains vertical slice pattern with MCP as separate module
 5. **Easy to Extend**: Can add more tools later (e.g., crawling) following same pattern
+
+## 🚀 CI/CD Pipeline Patterns
+
+The project implements a comprehensive CI/CD pipeline using GitHub Actions with modern best practices for Python projects using uv.
+
+### GitHub Actions Workflow Structure
+
+```yaml
+# .github/workflows/quality.yml
+name: Quality & Testing
+
+on:
+  push:
+    branches: [main, dev]
+    paths:
+      - '**.py'
+      - 'pyproject.toml'
+      - 'uv.lock'
+      - 'Makefile'
+      - '.github/workflows/**'
+  pull_request:
+    branches: [main, dev]
+    paths:
+      - '**.py'
+      - 'pyproject.toml'
+      - 'uv.lock'
+      - 'Makefile'
+      - '.github/workflows/**'
+  workflow_dispatch:  # Manual trigger
+
+env:
+  UV_CACHE_DIR: /tmp/.uv-cache
+
+jobs:
+  changes:
+    name: Detect Changes
+    runs-on: ubuntu-latest
+    outputs:
+      python: ${{ steps.changes.outputs.python }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: changes
+        with:
+          filters: |
+            python:
+              - '**.py'
+              - 'pyproject.toml'
+              - 'uv.lock'
+              - 'Makefile'
+```
+
+### uv Integration Pattern
+
+```yaml
+# High-performance Python setup with uv
+- name: Install uv
+  uses: astral-sh/setup-uv@v6
+  with:
+    version: "0.8.0"
+    enable-cache: true
+
+- name: Set up Python
+  run: uv python install 3.13
+
+- name: Restore uv cache
+  uses: actions/cache@v4
+  with:
+    path: /tmp/.uv-cache
+    key: uv-${{ runner.os }}-${{ hashFiles('uv.lock') }}
+    restore-keys: |
+      uv-${{ runner.os }}-${{ hashFiles('uv.lock') }}
+      uv-${{ runner.os }}
+
+- name: Install dependencies
+  run: uv sync
+
+- name: Minimize uv cache
+  run: uv cache prune --ci
+```
+
+### Matrix Testing Pattern
+
+```yaml
+# Test across multiple Python versions
+strategy:
+  fail-fast: false
+  matrix:
+    python-version: ["3.11", "3.12", "3.13"]
+
+steps:
+  - name: Set up Python ${{ matrix.python-version }}
+    run: uv python install ${{ matrix.python-version }}
+  
+  - name: Run tests
+    run: make test
+```
+
+### Security Workflow Pattern
+
+```yaml
+# .github/workflows/security.yml
+name: Security
+
+on:
+  push:
+    branches: [main, dev]
+    paths:
+      - '**.py'
+      - 'pyproject.toml'
+      - 'uv.lock'
+      - 'requirements*.txt'
+      - '.github/workflows/security.yml'
+  pull_request:
+    branches: [main, dev]
+    paths:
+      - '**.py'
+      - 'pyproject.toml'
+      - 'uv.lock'
+      - 'requirements*.txt'
+      - '.github/workflows/security.yml'
+  schedule:
+    - cron: '0 0 * * 1'  # Weekly on Monday
+  workflow_dispatch:
+
+jobs:
+  dependency-review:
+    name: Dependency Review
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Dependency Review
+        uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: moderate
+```
+
+### Makefile CI Integration
+
+```makefile
+# CI-specific targets in Makefile
+# Check code quality without making changes (CI-safe)
+check-commit: check test
+	@echo "Code quality check complete (no fixes applied)!"
+
+# Security scanning
+security:
+	@echo "Running security scans..."
+	uv add --dev safety bandit semgrep
+	uv run safety check --json --output security-report.json
+	uv run bandit -r . -f json -o bandit-report.json -x tests/
+	uv run semgrep --config=auto --json --output=semgrep-report.json
+```
+
+### Path-Based Filtering
+
+```yaml
+# Only run workflows when relevant files change
+paths:
+  - '**.py'           # Python source files
+  - 'pyproject.toml'  # Project configuration
+  - 'uv.lock'         # Dependency lock file
+  - 'Makefile'        # Build scripts
+  - '.github/workflows/**'  # Workflow changes
+```
+
+### Artifact Management
+
+```yaml
+# Upload test and security reports
+- name: Upload coverage reports
+  if: always()
+  uses: actions/upload-artifact@v4
+  with:
+    name: coverage-report
+    path: htmlcov/
+    retention-days: 30
+
+- name: Upload security reports
+  if: always()
+  uses: actions/upload-artifact@v4
+  with:
+    name: security-reports
+    path: |
+      security-report.json
+      bandit-report.json
+      semgrep-report.json
+    retention-days: 30
+```
+
+### Dependabot Configuration
+
+```yaml
+# .github/dependabot.yml
+version: 2
+updates:
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    reviewers:
+      - "albertsikkema"
+    assignees:
+      - "albertsikkema"
+    commit-message:
+      prefix: "chore"
+      include: "scope"
+```
+
+### CI/CD Best Practices
+
+#### Performance Optimization
+- **uv caching**: 10-100x faster dependency resolution
+- **Path-based filtering**: Only run on relevant file changes
+- **Parallel job execution**: Quality and security checks run concurrently
+- **Smart cache invalidation**: Based on lock file hash
+
+#### Security Integration
+- **Dependency review**: Automated vulnerability scanning on PRs
+- **Multi-tool scanning**: safety, bandit, semgrep for comprehensive analysis
+- **Scheduled scans**: Weekly security checks
+- **Graceful failure handling**: continue-on-error for non-critical scans
+
+#### Development Workflow
+- **CI-safe commands**: `make check-commit` (no auto-fixes in CI)
+- **Local development parity**: Same commands work locally and in CI
+- **Comprehensive testing**: 160 tests across unit, integration, and security
+- **Matrix testing**: Python 3.11, 3.12, 3.13 compatibility
+
+### Key Files
+
+- `.github/workflows/quality.yml`: Main quality and testing workflow
+- `.github/workflows/security.yml`: Security scanning workflow
+- `.github/dependabot.yml`: Dependency update configuration
+- `Makefile`: CI/CD command definitions (check-commit, security, etc.)
+
+### Status Checks for Branch Protection
+
+```yaml
+# Recommended required status checks
+required_status_checks:
+  strict: true
+  contexts:
+    - "Quality & Testing / Code Quality"
+    - "Quality & Testing / Test Matrix (3.11)"
+    - "Quality & Testing / Test Matrix (3.12)"  
+    - "Quality & Testing / Test Matrix (3.13)"
+    - "Quality & Testing / Build Check"
+    - "Security / Dependency Review"
+```
+
+### Migration from pip to uv
+
+The project successfully migrated from pip to uv for:
+- **Faster builds**: 10-100x improvement in dependency resolution
+- **Better caching**: More efficient cache management
+- **Unified tooling**: Single tool for dependencies, virtual environments, and execution
+- **Modern Python packaging**: Following 2025 best practices
+
+**Key Benefits Achieved:**
+1. Dramatically faster CI/CD pipelines
+2. Consistent environments across development and production
+3. Better dependency resolution and conflict detection
+4. Improved developer experience with faster local development
