@@ -1,7 +1,7 @@
 # FastAPI Project Makefile
 # Common commands for development workflow
 
-.PHONY: help install run dev test lint format check clean setup venv
+.PHONY: help install run dev test lint format check clean setup venv mcp mcp-dev
 
 # Default target
 help:
@@ -95,3 +95,14 @@ update:
 	source venv/bin/activate && pip install --upgrade pip
 	source venv/bin/activate && pip install --upgrade -r requirements.txt
 	$(MAKE) freeze
+
+# Test MCP server
+test-mcp:
+	source venv/bin/activate && python -c "import asyncio; from fastmcp import Client; \
+	async def test(): \
+		async with Client('http://localhost:8000/mcp-server/mcp') as client: \
+			tools = await client.list_tools(); \
+			print(f'Available tools: {[tool.name for tool in tools]}'); \
+			result = await client.call_tool('geocode_city', {'city': 'London'}); \
+			print(f'Result: {result}'); \
+	asyncio.run(test())"
