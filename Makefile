@@ -1,13 +1,14 @@
 # FastAPI Project Makefile
 # Common commands for development workflow
 
-.PHONY: help install run dev test lint format check clean setup venv mcp mcp-dev
+.PHONY: help install run dev test lint format check clean setup sync
 
 # Default target
 help:
 	@echo "Available commands:"
 	@echo "  setup     - Create virtual environment and install dependencies"
-	@echo "  install   - Install dependencies"
+	@echo "  install   - Install dependencies (alias for sync)"
+	@echo "  sync      - Sync dependencies with uv"
 	@echo "  run       - Start FastAPI development server"
 	@echo "  dev       - Start FastAPI development server (alias for run)"
 	@echo "  test      - Run all tests"
@@ -18,60 +19,53 @@ help:
 	@echo "  fix       - Auto-fix linting issues and format code"
 	@echo "  quality   - Run complete code quality workflow"
 	@echo "  clean     - Clean up cache and temporary files"
-	@echo "  venv      - Create virtual environment"
-
-# Virtual environment creation
-venv:
-	python -m venv venv
-	@echo "Virtual environment created. Activate with: source venv/bin/activate"
 
 # Complete setup from scratch
 setup: 
 	@echo "Setting up the project..."
-	@echo "Creating virtual environment..."
-	python -m venv venv
-	@echo "Activating virtual environment and installing dependencies..."
-	source venv/bin/activate && pip install --upgrade pip
-	source venv/bin/activate && pip install -r requirements.txt
+	@echo "Creating virtual environment and installing dependencies..."
+	uv sync
 	@echo "Setup complete! Run 'make run' to start the server"
 
-# Install dependencies
-install:
-	source venv/bin/activate && pip install --upgrade pip
-	source venv/bin/activate && pip install -r requirements.txt
+# Sync dependencies
+sync:
+	uv sync
+
+# Install dependencies (alias for sync)
+install: sync
 
 # Start FastAPI development server
 run:
-	source venv/bin/activate && fastapi dev main.py
+	uv run fastapi dev main.py
 
 # Alias for run
 dev: run
 
 # Run tests
 test:
-	source venv/bin/activate && pytest
+	uv run pytest
 
 # Run tests with coverage
 test-cov:
-	source venv/bin/activate && pytest --cov=. --cov-report=term-missing
+	uv run pytest --cov=. --cov-report=term-missing
 
 # Run linter
 lint:
-	source venv/bin/activate && ruff check .
+	uv run ruff check .
 
 # Format code
 format:
-	source venv/bin/activate && ruff format .
+	uv run ruff format .
 
 # Check formatting without making changes
 check:
-	source venv/bin/activate && ruff check .
-	source venv/bin/activate && ruff format --check .
+	uv run ruff check .
+	uv run ruff format --check .
 
 # Auto-fix linting issues and format code
 fix:
-	source venv/bin/activate && ruff check --fix .
-	source venv/bin/activate && ruff format .
+	uv run ruff check --fix .
+	uv run ruff format .
 
 # Complete code quality workflow
 quality: fix test
@@ -86,19 +80,13 @@ clean:
 	find . -type d -name ".ruff_cache" -exec rm -rf {} +
 	@echo "Cleaned up cache and temporary files"
 
-# Production commands
-freeze:
-	source venv/bin/activate && pip freeze > requirements.txt
-
 # Update dependencies
 update:
-	source venv/bin/activate && pip install --upgrade pip
-	source venv/bin/activate && pip install --upgrade -r requirements.txt
-	$(MAKE) freeze
+	uv sync --upgrade
 
 # Test MCP server
 test-mcp:
-	source venv/bin/activate && python -c "import asyncio; from fastmcp import Client; \
+	uv run python -c "import asyncio; from fastmcp import Client; \
 	async def test(): \
 		async with Client('http://localhost:8000/mcp-server/mcp') as client: \
 			tools = await client.list_tools(); \

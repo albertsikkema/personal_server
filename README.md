@@ -89,18 +89,16 @@ git clone https://github.com/epblc/fastapi_template.git
 cd fastapi_template
 ```
 
-2. Create and activate a virtual environment:
+2. Install dependencies using uv:
 ```bash
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+# Install uv (if not already installed)
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Create virtual environment and install dependencies
+uv sync
 ```
 
-3. Install dependencies:
-```bash
-pip install -r requirements.txt
-```
-
-4. Set up environment variables:
+3. Set up environment variables:
 ```bash
 cp .env.example .env
 # Edit .env and set your API_KEY
@@ -197,13 +195,13 @@ Development mode with auto-reload:
 # Using Makefile (recommended)
 make run
 
-# Or directly
-fastapi dev main.py
+# Or directly with uv
+uv run fastapi dev main.py
 ```
 
 Production mode:
 ```bash
-fastapi run main.py --port 8000
+uv run fastapi run main.py --port 8000
 ```
 
 ### API Endpoints
@@ -619,34 +617,34 @@ This project uses [Ruff](https://docs.astral.sh/ruff/) for fast Python linting a
 
 Check code quality:
 ```bash
-ruff check .
+uv run ruff check .
 ```
 
 Auto-fix linting issues:
 ```bash
-ruff check --fix .
+uv run ruff check --fix .
 ```
 
 Format code:
 ```bash
-ruff format .
+uv run ruff format .
 ```
 
 ### Testing
 
 Run all tests:
 ```bash
-pytest
+uv run pytest
 ```
 
 Run tests with coverage:
 ```bash
-pytest --cov=.
+uv run pytest --cov=.
 ```
 
 Run specific test file:
 ```bash
-pytest tests/test_integration.py -v
+uv run pytest tests/test_integration.py -v
 ```
 
 ### Development Workflow
@@ -656,10 +654,10 @@ Before committing code, run:
 # Using Makefile (recommended)
 make quality
 
-# Or manually
-ruff format .
-ruff check --fix .
-pytest
+# Or manually with uv
+uv run ruff format .
+uv run ruff check --fix .
+uv run pytest
 ```
 
 ### Makefile Commands
@@ -725,8 +723,8 @@ fastapi_template/
 │   └── .gitkeep        # Keep directory in git
 ├── .env                # Environment variables (not in git)
 ├── .env.example        # Example environment variables
-├── requirements.txt    # Python dependencies
-├── pyproject.toml      # Ruff configuration and project metadata
+├── pyproject.toml      # Project metadata, dependencies, and Ruff configuration
+├── uv.lock            # UV dependency lock file
 ├── pytest.ini         # Pytest configuration
 ├── Makefile           # Common development commands
 ├── Claude.md          # AI assistant project documentation
