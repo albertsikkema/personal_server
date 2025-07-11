@@ -448,6 +448,7 @@ LOG_LEVEL=INFO                     # Logging level
 - Environment variables can be managed using Pydantic Settings
 - Tests ensure all 40 test cases pass before deployment
 - Use `make quality` before committing code changes
+- When writing titles and descriptions for comments and PRs, always follow the standards in ai_info/docs/conventional_commits.md
 
 ## 📎 Style & Conventions
 
@@ -1070,3 +1071,206 @@ The crawling implementation includes comprehensive testing:
 - Cache integration testing
 
 All tests are designed to work without external dependencies using comprehensive mocking strategies.
+
+## 🤖 MCP Integration
+
+The application includes a FastMCP server that exposes geocoding functionality through the Model Context Protocol, allowing LLM clients to access geocoding capabilities directly.
+
+### FastMCP Server
+- **Location**: `mcp/server.py`
+- **Tools**: `mcp/tools/geocoding.py`
+- **Integration**: Mounted at `/mcp` in main FastAPI app
+- **Transport**: Streamable HTTP
+
+### MCP Tool Pattern
+
+```python
+# mcp/tools/geocoding.py
+from typing import Annotated
+from pydantic import Field
+from fastmcp import FastMCP
+
+mcp = FastMCP("GecodingTools")
+
+@mcp.tool()
+async def geocode_city(
+    city: Annotated[str, Field(
+        description="City name to geocode (1-200 characters)",
+        min_length=1,
+        max_length=200
+    )]
+) -> dict:
+    """
+    Geocode a city name to get its geographic coordinates.
+    
+    This tool converts city names to geographic coordinates using OpenStreetMap's
+    Nominatim service. Results include latitude, longitude, display name, and
+    optional bounding box information.
+    """
+    try:
+        # Get geocoding service (reuse existing service)
+        service = get_geocoding_service()
+        
+        # Perform geocoding
+        result = await service.geocode_city(city.strip())
+        
+        if result is None:
+            return {
+                "error": "City not found",
+                "city": city,
+                "message": "No geocoding results found for the specified city"
+            }
+        
+        # Convert to dict for MCP response
+        response_dict = result.model_dump()
+        response_dict["success"] = True
+        
+        return response_dict
+        
+    except Exception as e:
+        return {
+            "error": "Geocoding service error",
+            "city": city,
+            "message": str(e)
+        }
+```
+
+### FastAPI Integration Pattern
+
+```python
+# main.py additions
+from contextlib import asynccontextmanager
+from mcp.server import get_mcp_server
+
+# Create MCP server and ASGI app
+mcp_server = get_mcp_server()
+mcp_app = mcp_server.http_app(path='/mcp')
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Lifespan context manager for FastAPI app."""
+    # Initialize MCP server
+    logger.info("Starting MCP server...")
+    async with mcp_app.lifespan(app):
+        logger.info("MCP server started successfully")
+        yield
+    logger.info("MCP server stopped")
+
+# Create FastAPI instance with MCP lifespan
+app = FastAPI(
+    title="FastAPI Application",
+    description="A FastAPI application with API key authentication and MCP integration",
+    lifespan=lifespan,
+)
+
+# Mount MCP server
+app.mount("/mcp", mcp_app)
+```
+
+### MCP Server Configuration Pattern
+
+```python
+# mcp/server.py
+from fastmcp import FastMCP
+from .tools.geocoding import geocode_city
+
+# Global MCP server instance
+_mcp_server = None
+
+def get_mcp_server() -> FastMCP:
+    """Get or create the MCP server instance."""
+    global _mcp_server
+    if _mcp_server is None:
+        _mcp_server = FastMCP(
+            name="FastAPI Geocoding MCP Server",
+            instructions="""
+            This server provides geocoding capabilities through the Model Context Protocol.
+            Use the geocode_city tool to convert city names to geographic coordinates.
+            """,
+        )
+        
+        # Register the geocoding tool
+        _mcp_server.add_tool(geocode_city)
+    
+    return _mcp_server
+```
+
+### Service Reuse Pattern
+
+The MCP integration follows the principle of service reuse:
+
+```python
+# Singleton pattern for service management
+_geocoding_service: Optional[GeocodingService] = None
+
+def get_geocoding_service() -> GeocodingService:
+    """Get or create the geocoding service instance."""
+    global _geocoding_service
+    if _geocoding_service is None:
+        _geocoding_service = GeocodingService()
+    return _geocoding_service
+```
+
+### Testing Pattern
+
+```python
+# mcp/tests/test_mcp_geocoding.py
+import pytest
+from fastmcp import Client
+from unittest.mock import Mock, patch, AsyncMock
+
+class TestMCPGeocodingTool:
+    @pytest.fixture
+    def mcp_client(self):
+        return Client(get_mcp_server())
+    
+    @patch('mcp.tools.geocoding.get_geocoding_service')
+    async def test_geocode_city_success(self, mock_get_service, mcp_client):
+        # Mock service response
+        mock_service = Mock()
+        mock_service.geocode_city = AsyncMock(return_value=GeocodingResponse(...))
+        mock_get_service.return_value = mock_service
+        
+        async with mcp_client:
+            result = await mcp_client.call_tool("geocode_city", {"city": "London"})
+            result_data = json.loads(result[0].text)
+            assert result_data["success"] is True
+```
+
+### Key Design Principles
+
+1. **Service Reuse**: MCP tools use identical services as REST API
+2. **Singleton Pattern**: Single service instances shared across the application
+3. **Proper Lifespan Management**: MCP server lifecycle integrated with FastAPI
+4. **Error Handling**: Structured error responses in MCP-compatible format
+5. **Testing**: Comprehensive unit and integration tests with mocking
+
+### Dependencies Added
+
+```python
+# pyproject.toml
+dependencies = [
+    "fastapi[standard]",
+    "pydantic",
+    "pydantic-settings",
+    "uvicorn",
+    "fastmcp",  # Added for MCP integration
+]
+```
+
+### Development Commands
+
+```bash
+# Makefile additions
+
+test-mcp:
+	source venv/bin/activate && python -c "import asyncio; from fastmcp import Client; ..."
+```
+
+### Benefits of This Implementation
+
+1. **No Code Duplication**: Reuses all existing geocoding logic
+2. **Consistent Behavior**: Same caching, rate limiting, and error handling
+3. **Maintainable**: Changes to geocoding service automatically reflected in MCP
+4. **Follows Architecture**: Maintains vertical slice pattern with MCP as separate module
+5. **Easy to Extend**: Can add more tools later (e.g., crawling) following same pattern

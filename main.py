@@ -1,3 +1,4 @@
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 
 from slowapi import Limiter, _rate_limit_exceeded_handler
@@ -9,6 +10,9 @@ from dependencies import AuthHTTPException, RequiredAuth
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+
+# Import MCP server
+from mcp_integration.server import get_mcp_server
 from routers import crawling, geocoding
 from utils.logging import get_logger, setup_logging
 
@@ -16,15 +20,32 @@ from utils.logging import get_logger, setup_logging
 setup_logging()
 logger = get_logger(__name__)
 
-# Create FastAPI instance
+# Create MCP server and ASGI app
+mcp_server = get_mcp_server()
+mcp_app = mcp_server.http_app()
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Lifespan context manager for FastAPI app."""
+    # Initialize MCP server
+    logger.info("Starting MCP server...")
+    async with mcp_app.lifespan(app):
+        logger.info("MCP server started successfully")
+        yield
+    logger.info("MCP server stopped")
+
+
+# Create FastAPI instance with MCP lifespan
 app = FastAPI(
     title="FastAPI Application",
-    description="A FastAPI application with API key authentication",
+    description="A FastAPI application with API key authentication and MCP integration",
     version="1.0.0",
     # Hide docs in production environment
     docs_url="/docs" if settings.ENV != "production" else None,
     redoc_url="/redoc" if settings.ENV != "production" else None,
     openapi_url="/openapi.json" if settings.ENV != "production" else None,
+    lifespan=lifespan,
 )
 
 # Configure CORS
@@ -61,6 +82,8 @@ app.include_router(
         503: {"description": "Crawl4AI service unavailable"},
     },
 )
+
+# MCP server will be mounted at the end to not interfere with FastAPI routes
 
 
 # Add custom exception handler for authentication errors
@@ -137,3 +160,8 @@ async def protected_data(_api_key: str = RequiredAuth):
             "items": ["item1", "item2", "item3"],
         }
     }
+
+
+# Mount MCP server at /mcp-server/mcp endpoint
+app.mount("/mcp-server", mcp_app)
+logger.info("MCP server mounted at /mcp-server/mcp endpoint")

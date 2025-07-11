@@ -27,6 +27,13 @@ An enterprise-grade FastAPI application implementing API key authentication usin
 - **Auto-generated Documentation**: Interactive API documentation at `/docs`
 - **Makefile Workflow**: Streamlined development commands
 
+### 🤖 MCP Integration
+- **Model Context Protocol**: Expose APIs as MCP tools for LLM clients
+- **FastMCP Server**: Integrated MCP server mounted at `/mcp-server/mcp` endpoint
+- **Geocoding Tool**: Convert city names to coordinates via MCP
+- **Streamable HTTP Transport**: Modern MCP transport protocol
+- **Service Reuse**: Identical functionality to REST API endpoints
+
 ## FastAPI Security Benefits
 
 This application leverages **FastAPI's official security implementation** for maximum compatibility and maintainability:
@@ -497,6 +504,97 @@ Authentication failures return enhanced error responses with request tracking:
   "timestamp": "2025-01-06T10:30:00.123456Z"
 }
 ```
+
+## 🤖 MCP Integration
+
+This application includes a FastMCP server that exposes geocoding functionality through the Model Context Protocol, allowing LLM clients to access geocoding capabilities directly.
+
+### MCP Server
+- **Endpoint**: `http://localhost:8000/mcp-server/mcp`
+- **Transport**: Streamable HTTP
+- **Tools**: `geocode_city`
+- **Integration**: Mounted directly in FastAPI application
+
+### Available Tools
+
+#### `geocode_city(city: str)`
+Convert city names to geographic coordinates using the same service as the REST API.
+
+**Features:**
+- Identical behavior to REST API `/geocode/city` endpoint
+- 24-hour result caching
+- Rate limiting (1 request/second to Nominatim)
+- Comprehensive error handling
+- Structured JSON responses
+
+**Example Usage:**
+```python
+import asyncio
+from fastmcp import Client
+
+async def test_geocoding():
+    async with Client('http://localhost:8000/mcp-server/mcp') as client:
+        result = await client.call_tool('geocode_city', {'city': 'London'})
+        print(result)
+        # Returns: Location data with lat/lon coordinates
+
+asyncio.run(test_geocoding())
+```
+
+### Client Configuration
+
+#### Claude Desktop
+Add to your Claude Desktop configuration:
+```json
+{
+  "mcpServers": {
+    "geocoding": {
+      "command": "mcp-proxy",
+      "args": ["http://localhost:8000/mcp-server/mcp"]
+    }
+  }
+}
+```
+
+#### Direct FastMCP Client
+```python
+from fastmcp import Client
+
+client = Client('http://localhost:8000/mcp-server/mcp')
+```
+
+### MCP Development Commands
+
+The application includes dedicated MCP commands in the Makefile:
+
+```bash
+# Start server with MCP integration
+make mcp
+
+# Start development server with MCP
+make mcp-dev
+
+# Test MCP server functionality
+make test-mcp
+```
+
+### Service Architecture
+
+The MCP integration follows the same vertical slice architecture:
+```
+mcp/
+├── server.py              # FastMCP server configuration
+├── tools/
+│   └── geocoding.py       # Geocoding tool implementation
+└── tests/
+    └── test_mcp_geocoding.py
+```
+
+**Key Benefits:**
+- **Service Reuse**: MCP tools use identical services as REST API
+- **Consistent Behavior**: Same caching, rate limiting, and error handling
+- **Zero Duplication**: No code duplication between MCP and REST implementations
+- **Maintainable**: Changes to services automatically reflect in both APIs
 
 ## Code Quality & Testing
 
