@@ -1352,9 +1352,9 @@ jobs:
 ```yaml
 # High-performance Python setup with uv
 - name: Install uv
-  uses: astral-sh/setup-uv@v6
+  uses: astral-sh/setup-uv@v6.3.1
   with:
-    version: "0.8.0"
+    version: "0.7.20"
     enable-cache: true
 
 - name: Set up Python
