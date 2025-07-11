@@ -3,16 +3,33 @@ requires = ["setuptools>=45", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "fastapi-app"
+name = "personal-server"
 version = "1.0.0"
 description = "A FastAPI application with API key authentication"
 authors = [{name = "FastAPI App", email = "app@example.com"}]
+requires-python = ">=3.10"
 dependencies = [
     "fastapi[standard]",
-    "pydantic",
+    "pydantic>=2.0",
     "pydantic-settings",
     "uvicorn",
+    "slowapi",
+    "httpx",
+    "fastmcp",
 ]
+
+[dependency-groups]
+dev = [
+    "pytest",
+    "pytest-asyncio",
+    "pytest-cov",
+    "ruff",
+    "coverage",
+]
+
+[tool.setuptools]
+py-modules = []
+packages = ["models", "routers", "services", "utils", "mcp_integration"]
 
 [tool.ruff]
 # Exclude a variety of commonly ignored directories.
