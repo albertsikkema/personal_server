@@ -1,0 +1,50 @@
+services:
+  fastapi:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    volumes:
+      # Mount source code for live development
+      - .:/app
+      # Exclude virtual environment to prevent conflicts
+      - /app/.venv
+      # Exclude other paths that shouldn't be mounted
+      - /app/.git
+      - /app/__pycache__
+    environment:
+      - PYTHONPATH=/app
+      - ENV=development
+      - DEBUG=true
+    env_file:
+      - .env.dev
+    # Override CMD for development with live reload
+    command: ["fastapi", "dev", "main.py", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    # Health check (inherited from Dockerfile)
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
+    # Development mode - restart on failure
+    develop:
+      watch:
+        # Sync source code changes for live reload
+        - action: sync
+          path: ./
+          target: /app
+          ignore:
+            - .venv/
+            - __pycache__/
+            - "*.pyc"
+            - ".git/"
+            - "logs/"
+            - "*.log"
+        # Rebuild on dependency changes
+        - action: rebuild
+          path: pyproject.toml
+        - action: rebuild
+          path: uv.lock
