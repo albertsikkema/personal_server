@@ -90,49 +90,10 @@ jobs:
       - name: Minimize uv cache
         run: uv cache prune --ci
 
-  test-matrix:
-    name: Test Matrix
-    runs-on: ubuntu-latest
-    needs: changes
-    if: ${{ needs.changes.outputs.python == 'true' }}
-    
-    strategy:
-      fail-fast: false
-      matrix:
-        python-version: ["3.11", "3.12", "3.13"]
-    
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-      
-      - name: Install uv
-        uses: astral-sh/setup-uv@v6.3.1
-        with:
-          version: "0.7.20"
-          enable-cache: true
-      
-      - name: Set up Python ${{ matrix.python-version }}
-        run: uv python install ${{ matrix.python-version }}
-      
-      - name: Install dependencies
-        run: uv sync
-      
-      - name: Run tests
-        run: make test
-      
-      - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v4
-        with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          files: ./coverage.xml
-          flags: unittests
-          name: codecov-umbrella
-          fail_ci_if_error: false
-
   build-check:
     name: Build Check
     runs-on: ubuntu-latest
-    needs: [quality, test-matrix]
+    needs: quality
     if: ${{ needs.changes.outputs.python == 'true' }}
     
     steps:

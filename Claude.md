@@ -1376,21 +1376,15 @@ jobs:
   run: uv cache prune --ci
 ```
 
-### Matrix Testing Pattern
+### Single Python Version Testing
 
 ```yaml
-# Test across multiple Python versions
-strategy:
-  fail-fast: false
-  matrix:
-    python-version: ["3.11", "3.12", "3.13"]
+# Test on Python 3.13 (latest stable)
+- name: Set up Python
+  run: uv python install 3.13
 
-steps:
-  - name: Set up Python ${{ matrix.python-version }}
-    run: uv python install ${{ matrix.python-version }}
-  
-  - name: Run tests
-    run: make test
+- name: Run tests
+  run: make test
 ```
 
 ### Security Workflow Pattern
@@ -1526,7 +1520,7 @@ updates:
 - **CI-safe commands**: `make check-commit` (no auto-fixes in CI)
 - **Local development parity**: Same commands work locally and in CI
 - **Comprehensive testing**: 160 tests across unit, integration, and security
-- **Matrix testing**: Python 3.11, 3.12, 3.13 compatibility
+- **Python 3.13**: Latest stable Python version for consistent testing
 
 ### Key Files
 
@@ -1543,9 +1537,6 @@ required_status_checks:
   strict: true
   contexts:
     - "Quality & Testing / Code Quality"
-    - "Quality & Testing / Test Matrix (3.11)"
-    - "Quality & Testing / Test Matrix (3.12)"  
-    - "Quality & Testing / Test Matrix (3.13)"
     - "Quality & Testing / Build Check"
     - "Security / Dependency Review"
 ```

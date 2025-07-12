@@ -976,7 +976,7 @@ The quality workflow (`.github/workflows/quality.yml`) runs on every push and pu
 
 #### Features
 - **Smart Path Filtering**: Only runs when relevant files change (Python, config, workflows)
-- **Matrix Testing**: Tests across Python versions 3.11, 3.12, and 3.13
+- **Python 3.13**: Uses the latest stable Python version for testing
 - **Fast Dependency Management**: Uses uv for 10-100x faster dependency resolution
 - **Intelligent Caching**: Caches dependencies and uv cache for faster builds
 - **CI-Safe Quality Checks**: Uses `make check-commit` (no auto-fixes in CI)
@@ -984,9 +984,8 @@ The quality workflow (`.github/workflows/quality.yml`) runs on every push and pu
 #### Workflow Jobs
 
 1. **Change Detection**: Determines if Python code or documentation changed
-2. **Code Quality**: Runs linting, formatting checks, and tests
-3. **Test Matrix**: Runs tests across multiple Python versions
-4. **Build Check**: Validates application startup and health endpoint
+2. **Code Quality**: Runs linting, formatting checks, and tests on Python 3.13
+3. **Build Check**: Validates application startup and health endpoint
 
 #### Example Run
 ```yaml
@@ -996,10 +995,6 @@ The quality workflow (`.github/workflows/quality.yml`) runs on every push and pu
 ├── Upload coverage reports
 └── Complete in ~2 minutes
 
-✅ Test Matrix (Python 3.11, 3.12, 3.13)
-├── Run full test suite (160 tests)
-├── Upload coverage to Codecov
-└── Complete in ~3 minutes
 
 ✅ Build Check
 ├── Validate application imports
@@ -1048,7 +1043,7 @@ The project includes Dependabot configuration (`.github/dependabot.yml`) for aut
 - **Optimized Caching**: Smart cache invalidation strategies
 
 #### Typical Build Times
-- **Quality Workflow**: ~5 minutes (includes all Python versions)
+- **Quality Workflow**: ~3 minutes (includes quality checks and build validation)
 - **Security Workflow**: ~3 minutes (includes all security scans)
 - **Cache Hit**: ~2 minutes (when dependencies unchanged)
 
@@ -1072,9 +1067,6 @@ make quality
 The following status checks are recommended for branch protection:
 
 - `Quality & Testing / Code Quality`
-- `Quality & Testing / Test Matrix (3.11)`
-- `Quality & Testing / Test Matrix (3.12)`
-- `Quality & Testing / Test Matrix (3.13)`
 - `Quality & Testing / Build Check`
 - `Security / Dependency Review` (PRs only)
 
