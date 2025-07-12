@@ -1021,9 +1021,7 @@ The security workflow (`.github/workflows/security.yml`) performs comprehensive 
 #### Workflow Jobs
 
 1. **Dependency Review**: Runs only on pull requests, fails on moderate+ severity
-2. **Security Scan**: Comprehensive security analysis using `make security`
-3. **Vulnerability Scan**: Dedicated package vulnerability scanning
-4. **Code Security Scan**: Static analysis for security patterns
+2. **Security Scan**: Comprehensive security analysis with pip-audit and bandit
 
 ### Automated Dependency Management
 
@@ -1043,8 +1041,8 @@ The project includes Dependabot configuration (`.github/dependabot.yml`) for aut
 
 #### Typical Build Times
 - **Quality Workflow**: ~3 minutes (includes quality checks and build validation)
-- **Security Workflow**: ~3 minutes (includes all security scans)
-- **Cache Hit**: ~2 minutes (when dependencies unchanged)
+- **Security Workflow**: ~2 minutes (streamlined security scanning)
+- **Cache Hit**: ~1 minute (when dependencies unchanged)
 
 ### Local Development Integration
 
