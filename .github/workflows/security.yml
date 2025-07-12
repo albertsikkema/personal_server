@@ -104,11 +104,31 @@ jobs:
       - name: Run pip-audit
         run: |
           echo "Running pip-audit vulnerability scan..."
-          uv run pip-audit --format=json --output=vulnerability-report.json || {
-            echo "pip-audit scan failed with exit code $?"
-            echo '{"vulnerabilities": [], "scan_failed": true, "error": "pip-audit execution failed"}' > vulnerability-report.json
-            exit 1
-          }
+          echo "Current directory: $(pwd)"
+          echo "Python version: $(uv run python --version)"
+          echo "pip-audit version: $(uv run pip-audit --version 2>&1 || echo 'pip-audit not found')"
+          echo "Starting scan..."
+          
+          # Always create a report file, even if the command fails
+          if uv run pip-audit --format=json --output=vulnerability-report.json; then
+            echo "pip-audit scan completed successfully"
+            exit_code=0
+          else
+            exit_code=$?
+            echo "pip-audit scan failed with exit code $exit_code"
+            echo "Creating fallback report..."
+            echo "{\"vulnerabilities\": [], \"scan_failed\": true, \"error\": \"pip-audit execution failed with exit code $exit_code\"}" > vulnerability-report.json
+          fi
+          
+          echo "Checking if report file exists:"
+          ls -la vulnerability-report.json || echo "vulnerability-report.json not found"
+          
+          if [ -f vulnerability-report.json ]; then
+            echo "Report file contents:"
+            cat vulnerability-report.json
+          fi
+          
+          exit $exit_code
       
       - name: Generate pip-audit summary
         if: always()
@@ -196,11 +216,33 @@ jobs:
       - name: Run bandit
         run: |
           echo "Running bandit security scan..."
-          uv run bandit -r main.py models/ routers/ services/ mcp_integration/ dependencies.py config.py middleware.py utils/ -f json -o bandit-report.json || {
-            echo "bandit scan failed with exit code $?"
-            echo '{"results": [], "scan_failed": true, "error": "bandit execution failed"}' > bandit-report.json
-            exit 1
-          }
+          echo "Current directory: $(pwd)"
+          echo "Python version: $(uv run python --version)"
+          echo "bandit version: $(uv run bandit --version 2>&1 || echo 'bandit not found')"
+          echo "Files to scan:"
+          ls -la main.py models/ routers/ services/ mcp_integration/ dependencies.py config.py middleware.py utils/ 2>&1 || echo "Some files missing"
+          echo "Starting scan..."
+          
+          # Always create a report file, even if the command fails
+          if uv run bandit -r main.py models/ routers/ services/ mcp_integration/ dependencies.py config.py middleware.py utils/ -f json -o bandit-report.json; then
+            echo "bandit scan completed successfully"
+            exit_code=0
+          else
+            exit_code=$?
+            echo "bandit scan failed with exit code $exit_code"
+            echo "Creating fallback report..."
+            echo "{\"results\": [], \"scan_failed\": true, \"error\": \"bandit execution failed with exit code $exit_code\"}" > bandit-report.json
+          fi
+          
+          echo "Checking if report file exists:"
+          ls -la bandit-report.json || echo "bandit-report.json not found"
+          
+          if [ -f bandit-report.json ]; then
+            echo "Report file contents:"
+            cat bandit-report.json
+          fi
+          
+          exit $exit_code
       
       - name: Generate bandit summary
         if: always()
