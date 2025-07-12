@@ -153,19 +153,21 @@ jobs:
               echo "   - Check workflow logs for detailed error information" >> $GITHUB_STEP_SUMMARY
               echo "   - This may indicate dependency resolution or installation issues" >> $GITHUB_STEP_SUMMARY
             else
-              vulnerability_count=$(cat vulnerability-report.json | jq '.vulnerabilities | length' 2>/dev/null || echo "0")
+              # Count vulnerabilities in pip-audit format (dependencies with vulns arrays)
+              vulnerability_count=$(cat vulnerability-report.json | jq '[.dependencies[] | select(.vulns | length > 0) | .vulns[]] | length' 2>/dev/null || echo "0")
+              vulnerable_packages=$(cat vulnerability-report.json | jq -r '[.dependencies[] | select(.vulns | length > 0) | .name] | unique | length' 2>/dev/null || echo "0")
               
               if [ "$vulnerability_count" = "0" ]; then
                 echo "✅ **Dependencies**: No known vulnerabilities detected" >> $GITHUB_STEP_SUMMARY
                 echo "   - All Python packages are secure" >> $GITHUB_STEP_SUMMARY
               else
-                echo "❌ **Dependencies**: $vulnerability_count vulnerabilities found" >> $GITHUB_STEP_SUMMARY
+                echo "❌ **Dependencies**: $vulnerability_count vulnerabilities found in $vulnerable_packages package(s)" >> $GITHUB_STEP_SUMMARY
                 echo "   - Check uploaded artifacts for detailed vulnerability report" >> $GITHUB_STEP_SUMMARY
                 echo "   - Update affected packages to secure versions" >> $GITHUB_STEP_SUMMARY
                 
                 echo "" >> $GITHUB_STEP_SUMMARY
                 echo "### Critical Vulnerabilities:" >> $GITHUB_STEP_SUMMARY
-                cat vulnerability-report.json | jq -r '.vulnerabilities[] | "- **\(.package)** \(.installed_version): \(.vulnerability_description)"' 2>/dev/null | head -5 >> $GITHUB_STEP_SUMMARY || echo "- See full report in artifacts" >> $GITHUB_STEP_SUMMARY
+                cat vulnerability-report.json | jq -r '.dependencies[] | select(.vulns | length > 0) | "**\(.name) \(.version):** \(.vulns | length) vulnerabilities", (.vulns[] | "- \(.id) (\(.aliases[]?)): \(.description | .[0:100])...")' 2>/dev/null | head -10 >> $GITHUB_STEP_SUMMARY || echo "- See full report in artifacts" >> $GITHUB_STEP_SUMMARY
               fi
             fi
           else
