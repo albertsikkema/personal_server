@@ -16,8 +16,6 @@ dependencies = [
     "slowapi",
     "httpx",
     "fastmcp",
-    # SECURITY FAULT: Intentionally vulnerable package for testing pip-audit
-    "werkzeug==0.15.6",  # Known CVE-2019-14806: Werkzeug directory traversal vulnerability
 ]
 
 [dependency-groups]
