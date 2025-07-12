@@ -16,6 +16,16 @@ dependencies = [
     "slowapi",
     "httpx",
     "fastmcp",
+    # Security vulnerability fixes (as detected by pip-audit)
+    "certifi>=2024.7.4",        # Fix PYSEC-2024-230
+    "cryptography>=43.0.1",     # Fix multiple CVEs (PYSEC-2024-225, GHSA-3ww4-gg4f-jr7f, etc.)
+    "jinja2>=3.1.6",           # Fix multiple XSS CVEs (GHSA-h5c8-rqwp-cp95, etc.)
+    "requests>=2.32.4",        # Fix GHSA-9wx4-h78v-vm56, GHSA-9hjg-9r4m-mvj7
+    "urllib3>=2.5.0",          # Fix GHSA-34jh-p97f-mpxf, GHSA-pq67-6m6q-mj2v
+    "setuptools>=78.1.1",      # Fix PYSEC-2025-49 (path traversal)
+    "twisted>=24.7.0",         # Fix PYSEC-2024-75, GHSA-c8m8-j448-xjx7
+    "configobj>=5.0.9",        # Fix GHSA-c33w-24p9-8m24 (ReDoS)
+    "idna>=3.7",               # Fix PYSEC-2024-60 (DoS)
 ]
 
 [dependency-groups]
