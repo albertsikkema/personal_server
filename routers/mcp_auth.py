@@ -1,15 +1,14 @@
 """
 MCP Authentication Router.
 
-This module provides API endpoints for MCP token generation with dual authentication support.
-Supports both FastAPI-Users authentication and legacy API key authentication.
+This module provides API endpoints for MCP token generation using JWT Bearer token authentication.
+Supports FastAPI-Users authentication for secure MCP token generation.
 """
 
 from datetime import UTC, datetime
 from typing import Any
 
 from auth.users import current_active_user
-from dependencies import RequiredAuth
 from fastapi import APIRouter, Depends, HTTPException, status
 from models.user import User
 from pydantic import BaseModel, Field
@@ -92,63 +91,6 @@ async def generate_mcp_token(
         # Unexpected errors
         logger.error(
             f"Unexpected error generating MCP token for user {current_user.email}: {type(e).__name__}: {e}"
-        )
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to generate MCP token: {e!s}",
-        ) from e
-
-
-@router.post("/mcp-token/legacy", response_model=MCPTokenResponse)
-async def generate_mcp_token_legacy(
-    _request: MCPTokenRequest,
-    api_key: str = RequiredAuth,
-    mcp_auth_service=Depends(get_mcp_auth_service),
-) -> MCPTokenResponse:
-    """
-    Generate MCP-specific JWT token for legacy API key authentication.
-
-    This endpoint maintains backward compatibility for users still using
-    X-API-KEY authentication instead of FastAPI-Users.
-
-    Args:
-        request: Token generation request
-        api_key: Validated legacy API key
-        mcp_auth_service: MCP authentication service
-
-    Returns:
-        MCPTokenResponse: JWT token and metadata
-
-    Raises:
-        HTTPException: If token generation fails
-    """
-    try:
-        # Generate MCP token for legacy API key
-        mcp_token = mcp_auth_service.generate_mcp_token_for_legacy_api_key(api_key)
-
-        return MCPTokenResponse(
-            mcp_token=mcp_token,
-            token_type="bearer",
-            expires_in=mcp_auth_service.expire_minutes * 60,
-            scope="mcp-access",
-            issued_at=datetime.now(UTC).isoformat(),
-            user_info={
-                "auth_type": "legacy-api-key",
-                "api_key_prefix": api_key[:8] + "...",
-            },
-        )
-
-    except ValueError as e:
-        # Configuration or validation errors
-        logger.error(f"Configuration error generating MCP token for API key: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Service configuration error: {e!s}",
-        ) from e
-    except Exception as e:
-        # Unexpected errors
-        logger.error(
-            f"Unexpected error generating MCP token for API key: {type(e).__name__}: {e}"
         )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

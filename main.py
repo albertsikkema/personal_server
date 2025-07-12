@@ -13,10 +13,8 @@ from config import settings
 
 # Database imports
 from database import close_db, create_db_and_tables
-from dependencies import AuthHTTPException
-from fastapi import Depends, FastAPI, Request
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
 
 # Import MCP server
 from mcp_integration.server import get_mcp_server
@@ -150,13 +148,6 @@ app.include_router(
 )
 
 # MCP server will be mounted at the end to not interfere with FastAPI routes
-
-
-# Add custom exception handler for authentication errors
-@app.exception_handler(AuthHTTPException)
-async def auth_exception_handler(_request: Request, exc: AuthHTTPException):
-    """Handle authentication exceptions with the original middleware format."""
-    return JSONResponse(status_code=exc.status_code, content=exc.response_content)
 
 
 # Root endpoint (no authentication required)

@@ -6,7 +6,7 @@ This module defines API endpoints for geocoding functionality including:
 - Health check for geocoding service
 - Comprehensive error handling and validation
 
-All endpoints require API key authentication and implement user rate limiting
+All endpoints require JWT Bearer token authentication and implement user rate limiting
 in addition to the Nominatim API rate limiting handled by the service layer.
 """
 

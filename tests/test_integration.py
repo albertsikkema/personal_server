@@ -1,3 +1,5 @@
+from auth.users import current_active_user
+from fastapi import Depends
 from fastapi.testclient import TestClient
 
 
@@ -121,7 +123,6 @@ class TestEnvironmentBasedDocumentation:
 
         from pydantic_settings import BaseSettings, SettingsConfigDict
 
-        from dependencies import RequiredAuth
         from fastapi import FastAPI
         from fastapi.middleware.cors import CORSMiddleware
         from pydantic import Field
@@ -135,7 +136,6 @@ class TestEnvironmentBasedDocumentation:
                 validate_default=True,
             )
 
-            API_KEY: str = Field(default="test-api-key-12345678")
             JWT_SECRET: str = Field(
                 default="test-jwt-secret-key-for-testing-purposes-minimum-32-chars-required"
             )
@@ -165,7 +165,7 @@ class TestEnvironmentBasedDocumentation:
         # Authentication now handled via dependency injection
         # Add protected endpoint that requires authentication
         @app.get("/protected")
-        async def protected_endpoint(_api_key: str = RequiredAuth):
+        async def protected_endpoint(_user=Depends(current_active_user)):
             return {"message": "Access granted to protected resource"}
 
         return app

@@ -5,8 +5,6 @@ This module provides MCP-specific JWT authentication service integrated with Fas
 Generates RSA-signed JWT tokens for MCP access from authenticated FastAPI-Users.
 """
 
-import hashlib
-
 from config import settings
 from models.user import User
 from services.mcp_rsa_keys import get_mcp_rsa_manager
@@ -55,53 +53,6 @@ class MCPAuthService:
         except Exception as e:
             logger.error(f"Failed to generate MCP token for user {user.email}: {e}")
             raise
-
-    def generate_mcp_token_for_legacy_api_key(self, api_key: str) -> str:
-        """
-        Generate RSA-signed JWT token for legacy API key users.
-
-        Args:
-            api_key: Validated legacy API key
-
-        Returns:
-            str: JWT token for MCP authentication
-
-        Raises:
-            Exception: If token generation fails
-        """
-        try:
-            # For legacy API key users, create token with limited context
-            key_pair = self.rsa_manager.get_or_create_key_pair()
-
-            token = key_pair.create_token(
-                audience=self.audience,
-                subject=f"legacy-api-key:{self._hash_api_key(api_key)}",
-                issuer=self.issuer,
-                additional_claims={
-                    "scope": "mcp-access",
-                    "auth_type": "legacy-api-key",
-                },
-                expires_in_seconds=self.expire_minutes * 60,
-            )
-
-            logger.info(f"Generated MCP token for legacy API key: {api_key[:8]}...")
-            return token
-
-        except Exception as e:
-            logger.error(f"Failed to generate MCP token for API key: {e}")
-            raise
-
-    def _hash_api_key(self, api_key: str) -> str:
-        """
-        Create a hash of the API key for token identification.
-
-        Args:
-            api_key: The API key to hash
-
-        Returns:
-            str: Hashed API key (first 16 characters of SHA256 hash)
-        """
-        return hashlib.sha256(api_key.encode("utf-8")).hexdigest()[:16]
 
 
 # Singleton instance

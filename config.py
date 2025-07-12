@@ -11,12 +11,6 @@ class Settings(BaseSettings):
         validate_default=True,
     )
 
-    # Legacy API Key for backward compatibility (optional now)
-    API_KEY: str | None = Field(
-        default=None,
-        description="Legacy API key for backward compatibility",
-    )
-
     # JWT Configuration
     JWT_SECRET: str = Field(
         ..., min_length=32, description="JWT secret key (minimum 32 characters)"
