@@ -1,3 +1,5 @@
+from auth.users import current_active_user
+from fastapi import Depends
 from fastapi.testclient import TestClient
 
 
@@ -163,7 +165,7 @@ class TestEnvironmentBasedDocumentation:
         # Authentication now handled via dependency injection
         # Add protected endpoint that requires authentication
         @app.get("/protected")
-        async def protected_endpoint():
+        async def protected_endpoint(_user=Depends(current_active_user)):
             return {"message": "Access granted to protected resource"}
 
         return app

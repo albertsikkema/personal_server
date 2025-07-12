@@ -8,11 +8,11 @@ An enterprise-grade FastAPI application implementing JWT Bearer token authentica
 
 ### 🔒 Security
 - **FastAPI-Users Integration**: Modern user management with JWT Bearer token authentication
-- **Dependency Injection Authentication**: Clean, testable authentication using FastAPI dependencies
-- **JWT Authentication**: Secure authentication using Bearer tokens with validation
-- **OpenAPI Security Documentation**: Automatic security scheme documentation in Swagger/ReDoc
+- **User Registration & Login**: Complete user lifecycle with secure registration and JWT login endpoints
+- **JWT Bearer Authentication**: Secure authentication using Bearer tokens with automatic validation
+- **OpenAPI Security Documentation**: Automatic Bearer token security scheme documentation in Swagger/ReDoc
 - **Comprehensive Security Testing**: Protection against injection attacks, XSS, and malformed input
-- **Case-Insensitive Headers**: HTTP standard-compliant header handling
+- **Standards-Compliant**: HTTP Authorization header with Bearer token standard
 
 ### 🚀 Production Ready
 - **Enhanced Error Responses**: Request IDs and timestamps for debugging
@@ -31,18 +31,19 @@ An enterprise-grade FastAPI application implementing JWT Bearer token authentica
 - **Model Context Protocol**: Expose APIs as MCP tools for LLM clients with JWT Bearer token authentication
 - **FastMCP Server**: Integrated MCP server mounted at `/mcp-server/mcp` endpoint
 - **Geocoding Tool**: Convert city names to coordinates via MCP
-- **Streamable HTTP Transport**: Modern MCP transport protocol with per-request authentication
-- **Service Reuse**: Identical functionality to REST API endpoints
+- **Streamable HTTP Transport**: Modern MCP transport protocol with per-request JWT authentication
+- **Service Reuse**: Identical functionality to REST API endpoints with same authentication
 
-**Authentication Behavior**: JWT Bearer tokens are validated on every MCP request, not just at connection time. The FastMCP client automatically includes the Bearer token in each request, providing secure per-request authentication following industry-standard JWT patterns.
+**Authentication Behavior**: JWT Bearer tokens are validated on every MCP request using the same FastAPI-Users authentication system. The FastMCP client automatically includes the Bearer token in each request, providing secure per-request authentication following industry-standard JWT patterns.
 
 ## FastAPI Security Benefits
 
 This application leverages **FastAPI's official security implementation** for maximum compatibility and maintainability:
 
 ### 🎯 **Standards Compliance**
-- Uses `fastapi.security.APIKeyHeader` for standard security patterns
-- Follows FastAPI best practices and conventions
+- Uses `fastapi.security.HTTPBearer` for JWT Bearer token authentication
+- Integrates FastAPI-Users for modern authentication patterns
+- Follows OpenAPI 3.0 Bearer authentication standards
 - Compatible with all FastAPI tooling and ecosystem
 
 ### 📚 **Automatic Documentation**
@@ -66,22 +67,25 @@ This application leverages **FastAPI's official security implementation** for ma
 ```python
 # Clear, explicit, and discoverable
 @app.get("/protected")
-async def protected_endpoint(_api_key: str = RequiredAuth):
-    return {"message": "Authenticated"}
+async def protected_endpoint(user: User = Depends(current_active_user)):
+    return {"message": f"Authenticated as {user.email}"}
 ```
 
 ## Security Model
 
-This application uses **FastAPI's official security implementation** with dependency injection:
-- Authentication is handled through FastAPI dependencies using `Security()` and `Depends()`
+This application uses **FastAPI-Users** with JWT Bearer token authentication:
+- User management handled through FastAPI-Users with user registration and login
+- Authentication is handled through FastAPI dependencies using `Depends(current_active_user)`
 - Protected endpoints explicitly declare authentication requirements
 - Public endpoints require no authentication dependencies
 - Currently public endpoints:
   - `/` - Root endpoint
   - `/health` - Health check
-  - `/docs` - Swagger UI documentation (includes authentication UI)
+  - `/auth/register` - User registration
+  - `/auth/jwt/login` - JWT login
+  - `/docs` - Swagger UI documentation (includes Bearer token authentication UI)
   - `/redoc` - ReDoc documentation (includes security information)
-  - `/openapi.json` - OpenAPI schema (includes security definitions)
+  - `/openapi.json` - OpenAPI schema (includes Bearer token security definitions)
 
 ## Installation
 
@@ -103,7 +107,7 @@ uv sync
 3. Set up environment variables:
 ```bash
 cp .env.example .env
-# Edit .env and set your API_KEY
+# Edit .env and set your JWT_SECRET
 ```
 
 ## Configuration
@@ -111,8 +115,8 @@ cp .env.example .env
 Create a `.env` file in the project root with the following:
 
 ```env
-# Required: API key for authentication (minimum 8 characters)
-API_KEY=your-secret-api-key-here
+# Required: JWT secret for token authentication (minimum 32 characters)
+JWT_SECRET=your-super-secret-jwt-signing-key-here-minimum-32-characters
 
 # Optional: Application configuration
 APP_NAME=FastAPI Application
@@ -144,7 +148,7 @@ CRAWLING_USER_RATE_LIMIT=10/minute
 The application includes comprehensive configuration validation:
 
 #### Core Settings
-- **API_KEY**: Required, minimum 8 characters for security
+- **JWT_SECRET**: Required, minimum 32 characters for JWT token signing security
 - **APP_NAME**: Application name for logging and identification
 - **DEBUG**: Boolean flag for debug mode
 - **ENV**: Environment (development, staging, production) - controls API documentation visibility
@@ -213,7 +217,7 @@ uv run fastapi run main.py --port 8000
 - `GET /` - Welcome message
 - `GET /health` - Health check endpoint
 
-#### Protected Endpoints (API Key Required)
+#### Protected Endpoints (JWT Bearer Token Required)
 
 - `GET /protected` - Example protected endpoint
 - `GET /protected/data` - Example protected data endpoint
@@ -255,7 +259,7 @@ The crawling API provides powerful web scraping capabilities with screenshot cap
 
 ```bash
 curl -X POST "http://localhost:8000/crawl" \
-  -H "X-API-KEY: your-api-key" \
+  -H "Authorization: Bearer <your-access-token>" \
   -H "Content-Type: application/json" \
   -d '{
     "urls": ["https://example.com", "https://httpbin.org/html"],
@@ -268,7 +272,7 @@ curl -X POST "http://localhost:8000/crawl" \
 
 ```bash
 curl -X POST "http://localhost:8000/crawl" \
-  -H "X-API-KEY: your-api-key" \
+  -H "Authorization: Bearer <your-access-token>" \
   -H "Content-Type: application/json" \
   -d '{
     "urls": ["https://example.com"],
@@ -283,7 +287,7 @@ curl -X POST "http://localhost:8000/crawl" \
 
 ```bash
 curl -X POST "http://localhost:8000/crawl" \
-  -H "X-API-KEY: your-api-key" \
+  -H "Authorization: Bearer <your-access-token>" \
   -H "Content-Type: application/json" \
   -d '{
     "urls": ["https://example.com"],
@@ -299,7 +303,7 @@ curl -X POST "http://localhost:8000/crawl" \
 
 ```bash
 curl -X POST "http://localhost:8000/crawl" \
-  -H "X-API-KEY: your-api-key" \
+  -H "Authorization: Bearer <your-access-token>" \
   -H "Content-Type: application/json" \
   -d '{
     "urls": ["https://example.com"],
@@ -388,7 +392,7 @@ Screenshot dimensions are validated for security and performance:
 
 ```bash
 curl -X GET "http://localhost:8000/crawl/health" \
-  -H "X-API-KEY: your-api-key"
+  -H "Authorization: Bearer <your-access-token>"
 ```
 
 Response:
@@ -421,7 +425,7 @@ The API provides detailed error responses:
 ```
 
 Common error codes:
-- `401`: Authentication required or invalid
+- `401`: JWT Bearer token required, invalid, or expired
 - `422`: Invalid input parameters (URL format, dimension limits, etc.)
 - `429`: Rate limit exceeded
 - `503`: Crawl4AI service unavailable
@@ -435,7 +439,7 @@ Convert city names to geographic coordinates using the Nominatim service.
 
 ```bash
 curl -X GET "http://localhost:8000/geocode/city?city=London" \
-  -H "X-API-KEY: your-api-key"
+  -H "Authorization: Bearer <your-access-token>"
 ```
 
 Response:
@@ -456,25 +460,52 @@ Response:
 
 ### Authentication
 
-This application uses FastAPI's official security system with automatic OpenAPI integration.
+This application uses FastAPI-Users for comprehensive user management with JWT Bearer token authentication.
 
-#### Using the API
+#### User Registration and Login Flow
 
-Include the API key in the request header. Headers are case-insensitive per HTTP standards:
+1. **Register a new user**:
 ```bash
-# All of these work (case-insensitive)
-curl -H "X-API-KEY: your-secret-api-key-here" http://localhost:8000/protected
-curl -H "x-api-key: your-secret-api-key-here" http://localhost:8000/protected
-curl -H "X-Api-Key: your-secret-api-key-here" http://localhost:8000/protected
+curl -X POST "http://localhost:8000/auth/register" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "user@example.com",
+    "password": "secure-password",
+    "is_active": true,
+    "is_superuser": false,
+    "is_verified": false
+  }'
+```
+
+2. **Login to get access token**:
+```bash
+curl -X POST "http://localhost:8000/auth/jwt/login" \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "username=user@example.com&password=secure-password"
+```
+
+Response:
+```json
+{
+  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "token_type": "bearer"
+}
+```
+
+3. **Use Bearer token in API requests**:
+```bash
+curl -H "Authorization: Bearer <your-access-token>" http://localhost:8000/protected
 ```
 
 #### Using Swagger UI
 
 1. Open http://localhost:8000/docs in your browser
-2. Click the "Authorize" button in the top right
-3. Enter your API key in the "APIKeyHeader (X-API-KEY)" field
-4. Click "Authorize" to authenticate
-5. Now you can test protected endpoints directly in the UI
+2. Register a new user using the `/auth/register` endpoint
+3. Login using the `/auth/jwt/login` endpoint to get your access token
+4. Click the "Authorize" button in the top right
+5. Enter your access token in the "HTTPBearer (Authorization)" field with "Bearer " prefix
+6. Click "Authorize" to authenticate
+7. Now you can test protected endpoints directly in the UI
 
 #### OpenAPI Security Schema
 
@@ -483,11 +514,11 @@ The application automatically generates OpenAPI security documentation:
 {
   "components": {
     "securitySchemes": {
-      "APIKeyHeader": {
-        "type": "apiKey",
-        "description": "API key for authentication",
-        "in": "header", 
-        "name": "X-API-KEY"
+      "HTTPBearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "JWT Bearer token authentication"
       }
     }
   }
@@ -499,7 +530,7 @@ The application automatically generates OpenAPI security documentation:
 Authentication failures return enhanced error responses with request tracking:
 ```json
 {
-  "detail": "API key missing",
+  "detail": "Not authenticated",
   "request_id": "550e8400-e29b-41d4-a716-446655440000",
   "timestamp": "2025-01-06T10:30:00.123456Z"
 }
@@ -738,15 +769,16 @@ fastapi_template/
 
 ### Adding New Endpoints
 
-With FastAPI dependency injection, endpoints are explicit about their security requirements:
+With FastAPI-Users dependency injection, endpoints are explicit about their security requirements:
 
 #### Protected Endpoints (Require Authentication)
 ```python
-from dependencies import RequiredAuth
+from fastapi_users import current_active_user
+from models.user import User
 
 @app.get("/my-protected-endpoint")
-async def my_protected_endpoint(_api_key: str = RequiredAuth):
-    return {"message": "This endpoint requires authentication"}
+async def my_protected_endpoint(user: User = Depends(current_active_user)):
+    return {"message": f"This endpoint requires authentication. Hello {user.email}!"}
 ```
 
 #### Public Endpoints (No Authentication)
@@ -758,12 +790,14 @@ async def my_public_endpoint():
 
 #### Optional Authentication
 ```python
-from dependencies import OptionalAuth
+from fastapi_users import current_user
+from models.user import User
+from typing import Optional
 
 @app.get("/my-optional-auth-endpoint")
-async def my_optional_auth_endpoint(api_key: Optional[str] = OptionalAuth):
-    if api_key:
-        return {"message": "Authenticated user", "authenticated": True}
+async def my_optional_auth_endpoint(user: Optional[User] = Depends(current_user)):
+    if user:
+        return {"message": f"Authenticated user: {user.email}", "authenticated": True}
     return {"message": "Public access", "authenticated": False}
 ```
 
@@ -886,45 +920,62 @@ ENV=production
 ### Built-in Security Testing
 
 The application includes comprehensive security testing against:
-- **SQL Injection**: Malicious SQL in API keys
+- **SQL Injection**: Malicious SQL in JWT tokens and user input
 - **XSS Attacks**: Script injection attempts
 - **Header Injection**: CRLF injection in headers
 - **Unicode Attacks**: Normalization bypass attempts
 - **Null Byte Injection**: String termination attacks
-- **Extreme Input**: 10KB+ API key handling
+- **JWT Token Attacks**: Invalid tokens, expired tokens, malformed tokens
+- **Authentication Bypass**: Attempts to access protected endpoints without tokens
 - **Malformed Data**: Empty and whitespace-only inputs
 
 ### Security by Design
 
 - **Default Deny**: All endpoints protected unless explicitly whitelisted
-- **Case-Insensitive Headers**: HTTP standard compliant
-- **Input Validation**: Comprehensive API key validation
-- **Audit Logging**: All authentication attempts logged
+- **JWT Standards**: HTTP Bearer token authentication following RFC 6750
+- **Input Validation**: Comprehensive JWT token validation and user input sanitization
+- **Audit Logging**: All authentication attempts and user actions logged
 - **Error Handling**: No information leakage in responses
+- **User Management**: Secure user registration, login, and session management
 
 ## Production Deployment
 
 ### Security Checklist
 
-1. **API Key Management**:
-   - Use strong API keys (minimum 8 characters, recommend 32+)
+1. **JWT Secret Management**:
+   - Use strong JWT secrets (minimum 32 characters, recommend 64+)
    - Never commit `.env` files to version control
-   - Implement key rotation procedures
+   - Implement JWT secret rotation procedures
+   - Consider using HSA256 algorithm for JWT signing
 
-2. **Network Security**:
+2. **User Management**:
+   - Implement proper user registration validation
+   - Use secure password policies
+   - Consider email verification for new users
+   - Implement user account lockout policies
+
+3. **Token Security**:
+   - Set appropriate JWT expiration times
+   - Implement token refresh mechanisms if needed
+   - Store tokens securely on client side
+   - Consider token revocation strategies
+
+4. **Network Security**:
    - Always use HTTPS in production
    - Implement rate limiting at gateway/proxy level
    - Restrict CORS origins to specific domains
 
-3. **Monitoring**:
+5. **Monitoring**:
    - Monitor authentication failure patterns
-   - Set up alerts for unusual request patterns
+   - Set up alerts for unusual login patterns
    - Use request IDs for incident correlation
+   - Track failed login attempts per user
 
-4. **Configuration**:
+6. **Configuration**:
    - Set `DEBUG=false` in production
    - Configure appropriate `LOG_LEVEL` (INFO or WARNING)
    - Validate all environment variables at startup
+   - Ensure JWT_SECRET is properly configured
 
 ## Development & Contributing
 
@@ -953,11 +1004,11 @@ When adding new security tests, follow the pattern in `TestSecurityTesting`:
 ```python
 def test_new_attack_vector(self, client: TestClient):
     """Test protection against new attack type."""
-    malicious_headers = {"X-API-KEY": "malicious-payload"}
+    malicious_headers = {"Authorization": "Bearer malicious-payload"}
     response = client.get("/protected", headers=malicious_headers)
     assert response.status_code == 401
     data = response.json()
-    assert data["detail"] == "Invalid API key"
+    assert data["detail"] == "Not authenticated"
     assert "request_id" in data
 ```
 
