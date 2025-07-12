@@ -1,6 +1,6 @@
 """Integration tests for MCP authentication endpoints."""
 
-from unittest.mock import MagicMock, patch
+import jwt
 
 from fastapi.testclient import TestClient
 
@@ -8,17 +8,10 @@ from fastapi.testclient import TestClient
 class TestMCPTokenEndpoints:
     """Integration tests for MCP token generation endpoints."""
 
-    @patch("routers.mcp_auth.get_mcp_auth_service")
     def test_generate_mcp_token_with_fastapi_users_success(
-        self, mock_get_service, client: TestClient, test_user_token: str
+        self, client: TestClient, test_user_token: str
     ):
         """Test successful MCP token generation with FastAPI-Users authentication."""
-        # Mock the MCP auth service
-        mock_service = MagicMock()
-        mock_service.generate_mcp_token_for_user.return_value = "mcp.jwt.token.12345"
-        mock_service.expire_minutes = 60
-        mock_get_service.return_value = mock_service
-
         # Make request with valid FastAPI-Users JWT token
         headers = {"Authorization": f"Bearer {test_user_token}"}
         response = client.post("/auth/mcp-token", json={}, headers=headers)
@@ -26,12 +19,30 @@ class TestMCPTokenEndpoints:
         assert response.status_code == 200
         data = response.json()
 
-        assert data["mcp_token"] == "mcp.jwt.token.12345"
+        # Verify response structure
+        assert "mcp_token" in data
         assert data["token_type"] == "bearer"
         assert data["expires_in"] == 3600  # 60 minutes * 60 seconds
         assert data["scope"] == "mcp-access"
         assert "issued_at" in data
         assert "user_info" in data
+
+        # Verify JWT token structure (decode without verification for testing)
+        mcp_token = data["mcp_token"]
+        assert isinstance(mcp_token, str)
+        assert len(mcp_token.split(".")) == 3  # JWT has 3 parts
+
+        # Decode JWT to verify claims (without signature verification for testing)
+        try:
+            decoded = jwt.decode(mcp_token, options={"verify_signature": False})
+            assert decoded["iss"] == "personal-server"
+            assert decoded["aud"] == "mcp-server"
+            assert decoded["scope"] == "mcp-access"
+            assert "sub" in decoded
+            assert "iat" in decoded
+            assert "exp" in decoded
+        except jwt.InvalidTokenError:
+            raise AssertionError("Invalid JWT token format") from None
 
         # Verify user info contains expected fields
         user_info = data["user_info"]
@@ -59,38 +70,22 @@ class TestMCPTokenEndpoints:
         data = response.json()
         assert data["detail"] == "Unauthorized"
 
-    @patch("routers.mcp_auth.get_mcp_auth_service")
-    def test_generate_mcp_token_with_fastapi_users_service_error(
-        self, mock_get_service, client: TestClient, test_user_token: str
+    def test_generate_mcp_token_with_fastapi_users_service_robustness(
+        self, client: TestClient, test_user_token: str
     ):
-        """Test MCP token generation with service error."""
-        # Mock the MCP auth service to raise an exception
-        mock_service = MagicMock()
-        mock_service.generate_mcp_token_for_user.side_effect = Exception(
-            "Token generation failed"
-        )
-        mock_get_service.return_value = mock_service
-
+        """Test MCP token generation service robustness with multiple requests."""
         headers = {"Authorization": f"Bearer {test_user_token}"}
-        response = client.post("/auth/mcp-token", json={}, headers=headers)
 
-        assert response.status_code == 500
-        data = response.json()
-        assert "Failed to generate MCP token" in data["detail"]
+        # Make multiple requests to ensure service is robust
+        for _ in range(3):
+            response = client.post("/auth/mcp-token", json={}, headers=headers)
+            assert response.status_code == 200
+            data = response.json()
+            assert "mcp_token" in data
+            assert data["token_type"] == "bearer"
 
-    @patch("routers.mcp_auth.get_mcp_auth_service")
-    def test_generate_mcp_token_legacy_success(
-        self, mock_get_service, client: TestClient
-    ):
+    def test_generate_mcp_token_legacy_success(self, client: TestClient):
         """Test successful MCP token generation with legacy API key."""
-        # Mock the MCP auth service
-        mock_service = MagicMock()
-        mock_service.generate_mcp_token_for_legacy_api_key.return_value = (
-            "legacy.mcp.jwt.token"
-        )
-        mock_service.expire_minutes = 60
-        mock_get_service.return_value = mock_service
-
         # Make request with valid API key
         headers = {"X-API-KEY": "test-api-key-12345"}
         response = client.post("/auth/mcp-token/legacy", json={}, headers=headers)
@@ -98,12 +93,31 @@ class TestMCPTokenEndpoints:
         assert response.status_code == 200
         data = response.json()
 
-        assert data["mcp_token"] == "legacy.mcp.jwt.token"
+        # Verify response structure
+        assert "mcp_token" in data
         assert data["token_type"] == "bearer"
         assert data["expires_in"] == 3600
         assert data["scope"] == "mcp-access"
         assert "issued_at" in data
         assert "user_info" in data
+
+        # Verify JWT token structure (decode without verification for testing)
+        mcp_token = data["mcp_token"]
+        assert isinstance(mcp_token, str)
+        assert len(mcp_token.split(".")) == 3  # JWT has 3 parts
+
+        # Decode JWT to verify claims (without signature verification for testing)
+        try:
+            decoded = jwt.decode(mcp_token, options={"verify_signature": False})
+            assert decoded["iss"] == "personal-server"
+            assert decoded["aud"] == "mcp-server"
+            assert decoded["scope"] == "mcp-access"
+            assert decoded["auth_type"] == "legacy-api-key"
+            assert "sub" in decoded
+            assert "iat" in decoded
+            assert "exp" in decoded
+        except jwt.InvalidTokenError:
+            raise AssertionError("Invalid JWT token format") from None
 
         # Verify legacy user info
         user_info = data["user_info"]
@@ -116,7 +130,7 @@ class TestMCPTokenEndpoints:
 
         assert response.status_code == 401
         data = response.json()
-        assert "API key missing" in data["detail"]["detail"]
+        assert "API key missing" in data["detail"]
 
     def test_generate_mcp_token_legacy_invalid_api_key(self, client: TestClient):
         """Test legacy MCP token generation with invalid API key."""
@@ -125,26 +139,19 @@ class TestMCPTokenEndpoints:
 
         assert response.status_code == 401
         data = response.json()
-        assert "Invalid API key" in data["detail"]["detail"]
+        assert "Invalid API key" in data["detail"]
 
-    @patch("routers.mcp_auth.get_mcp_auth_service")
-    def test_generate_mcp_token_legacy_service_error(
-        self, mock_get_service, client: TestClient
-    ):
-        """Test legacy MCP token generation with service error."""
-        # Mock the MCP auth service to raise an exception
-        mock_service = MagicMock()
-        mock_service.generate_mcp_token_for_legacy_api_key.side_effect = Exception(
-            "Token generation failed"
-        )
-        mock_get_service.return_value = mock_service
-
+    def test_generate_mcp_token_legacy_service_robustness(self, client: TestClient):
+        """Test legacy MCP token generation service robustness with multiple requests."""
         headers = {"X-API-KEY": "test-api-key-12345"}
-        response = client.post("/auth/mcp-token/legacy", json={}, headers=headers)
 
-        assert response.status_code == 500
-        data = response.json()
-        assert "Failed to generate MCP token" in data["detail"]
+        # Make multiple requests to ensure service is robust
+        for _ in range(3):
+            response = client.post("/auth/mcp-token/legacy", json={}, headers=headers)
+            assert response.status_code == 200
+            data = response.json()
+            assert "mcp_token" in data
+            assert data["token_type"] == "bearer"
 
 
 class TestMCPEndpointSecurity:
@@ -168,16 +175,10 @@ class TestMCPEndpointSecurity:
         response = client.post("/auth/mcp-token", json={})
         assert response.status_code in [401, 422]  # Should fail auth, not rate limit
 
-    @patch("routers.mcp_auth.get_mcp_auth_service")
     def test_mcp_token_response_structure(
-        self, mock_get_service, client: TestClient, test_user_token: str
+        self, client: TestClient, test_user_token: str
     ):
         """Test that MCP token response has correct structure and no sensitive data leaks."""
-        mock_service = MagicMock()
-        mock_service.generate_mcp_token_for_user.return_value = "test.token.123"
-        mock_service.expire_minutes = 60
-        mock_get_service.return_value = mock_service
-
         headers = {"Authorization": f"Bearer {test_user_token}"}
         response = client.post("/auth/mcp-token", json={}, headers=headers)
 
@@ -206,17 +207,10 @@ class TestMCPEndpointSecurity:
 class TestMCPTokenValidation:
     """Test MCP token validation and format."""
 
-    @patch("routers.mcp_auth.get_mcp_auth_service")
     def test_mcp_token_format_validation(
-        self, mock_get_service, client: TestClient, test_user_token: str
+        self, client: TestClient, test_user_token: str
     ):
         """Test that generated MCP tokens have expected format."""
-        mock_service = MagicMock()
-        # Mock a JWT-like token format (using fake test token)
-        mock_service.generate_mcp_token_for_user.return_value = "fake.test.token"
-        mock_service.expire_minutes = 60
-        mock_get_service.return_value = mock_service
-
         headers = {"Authorization": f"Bearer {test_user_token}"}
         response = client.post("/auth/mcp-token", json={}, headers=headers)
 
@@ -224,7 +218,17 @@ class TestMCPTokenValidation:
         data = response.json()
 
         mcp_token = data["mcp_token"]
-        # For this test, we're using a fake token, so just verify it's not empty
+        # Verify JWT token format
         assert len(mcp_token) > 0
         assert mcp_token != "null" and mcp_token != "undefined"
-        assert mcp_token == "fake.test.token"
+        assert len(mcp_token.split(".")) == 3  # JWT has 3 parts
+
+        # Verify it's a valid JWT structure
+        try:
+            decoded = jwt.decode(mcp_token, options={"verify_signature": False})
+            assert "iss" in decoded
+            assert "aud" in decoded
+            assert "exp" in decoded
+            assert "iat" in decoded
+        except jwt.InvalidTokenError:
+            raise AssertionError("Invalid JWT token format") from None

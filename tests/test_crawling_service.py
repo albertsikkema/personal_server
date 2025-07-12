@@ -306,7 +306,7 @@ async def test_crawl_multiple_urls():
         assert result.failed_crawls == 0
         assert len(result.results) == 3
 
-        # All URLs should be represented
+        # All URLs should be represented (normalized without trailing slash)
         urls = {result.url for result in result.results}
         assert urls == {"https://example.com", "https://test.com", "https://demo.com"}
 
@@ -713,7 +713,7 @@ async def test_recursive_crawling_simple():
 
         # Check depth levels
         depths = {r.url: r.depth for r in result.results}
-        assert depths["https://example.com"] == 0  # Seed URL
+        assert depths["https://example.com"] == 0  # Seed URL (normalized)
         assert depths["https://example.com/about"] == 1  # Discovered from root
         assert depths["https://example.com/contact"] == 1  # Discovered from root
 
@@ -1148,7 +1148,7 @@ async def test_follow_external_links_basic():
 
         # Check depth levels
         depths = {r.url: r.depth for r in result.results}
-        assert depths["https://example.com"] == 0  # Seed URL
+        assert depths["https://example.com"] == 0  # Seed URL (normalized)
         assert depths["https://httpbin.org"] == 1  # External link at depth 1
         assert depths["https://different.com/page"] == 1  # External link at depth 1
 

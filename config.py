@@ -149,17 +149,27 @@ class Settings(BaseSettings):
         if self.MCP_JWT_EXPIRE_MINUTES == 60 and self.JWT_EXPIRE_MINUTES != 60:
             self.MCP_JWT_EXPIRE_MINUTES = self.JWT_EXPIRE_MINUTES
 
-        # In production, warn if using auto-generation
-        if self.ENV == "production" and (
-            not self.MCP_JWT_PRIVATE_KEY or not self.MCP_JWT_PUBLIC_KEY
-        ):
+        # In production, validate RSA keys
+        if self.ENV == "production":
             import logging
 
             logger = logging.getLogger(__name__)
-            logger.warning(
-                "MCP will auto-generate RSA keys. "
-                "Set MCP_JWT_PRIVATE_KEY and MCP_JWT_PUBLIC_KEY for production."
-            )
+
+            if not self.MCP_JWT_PRIVATE_KEY or not self.MCP_JWT_PUBLIC_KEY:
+                logger.warning(
+                    "MCP will auto-generate RSA keys. "
+                    "Set MCP_JWT_PRIVATE_KEY and MCP_JWT_PUBLIC_KEY for production."
+                )
+            else:
+                # Validate PEM format for provided keys
+                if not (
+                    self.MCP_JWT_PRIVATE_KEY.startswith("-----BEGIN")
+                    and self.MCP_JWT_PUBLIC_KEY.startswith("-----BEGIN")
+                ):
+                    raise ValueError(
+                        "Invalid PEM format for MCP RSA keys. "
+                        "Keys must be in PEM format starting with '-----BEGIN'"
+                    )
 
         return self
 

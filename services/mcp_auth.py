@@ -101,7 +101,7 @@ class MCPAuthService:
         Returns:
             str: Hashed API key (first 16 characters of SHA256 hash)
         """
-        return hashlib.sha256(api_key.encode()).hexdigest()[:16]
+        return hashlib.sha256(api_key.encode("utf-8")).hexdigest()[:16]
 
 
 # Singleton instance

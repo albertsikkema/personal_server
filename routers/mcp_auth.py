@@ -79,8 +79,20 @@ async def generate_mcp_token(
             },
         )
 
+    except ValueError as e:
+        # Configuration or validation errors
+        logger.error(
+            f"Configuration error generating MCP token for user {current_user.email}: {e}"
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Service configuration error: {e!s}",
+        ) from e
     except Exception as e:
-        logger.error(f"Failed to generate MCP token for user {current_user.email}: {e}")
+        # Unexpected errors
+        logger.error(
+            f"Unexpected error generating MCP token for user {current_user.email}: {type(e).__name__}: {e}"
+        )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to generate MCP token: {e!s}",
@@ -126,8 +138,18 @@ async def generate_mcp_token_legacy(
             },
         )
 
+    except ValueError as e:
+        # Configuration or validation errors
+        logger.error(f"Configuration error generating MCP token for API key: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Service configuration error: {e!s}",
+        ) from e
     except Exception as e:
-        logger.error(f"Failed to generate MCP token for API key: {e}")
+        # Unexpected errors
+        logger.error(
+            f"Unexpected error generating MCP token for API key: {type(e).__name__}: {e}"
+        )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to generate MCP token: {e!s}",
