@@ -1446,10 +1446,10 @@ check-commit: check test
 # Security scanning
 security:
 	@echo "Running security scans..."
-	uv add --dev safety bandit semgrep
-	uv run safety check --json --output security-report.json
+	uv add --dev pip-audit bandit semgrep
+	uv run pip-audit --format=json --output=security-report.json
 	uv run bandit -r . -f json -o bandit-report.json -x tests/
-	uv run semgrep --config=auto --json --output=semgrep-report.json
+	uv run semgrep --config=auto --json --output=semgrep-report.json --timeout=60 .
 ```
 
 ### Path-Based Filtering

@@ -1013,13 +1013,13 @@ The security workflow (`.github/workflows/security.yml`) performs comprehensive 
 
 #### Features
 - **Dependency Review**: Automated dependency vulnerability scanning on PRs
-- **Multi-Tool Security Scanning**: Uses safety, bandit, and semgrep
+- **Multi-Tool Security Scanning**: Uses pip-audit, bandit, and semgrep
 - **Scheduled Scanning**: Weekly security scans on Monday
 - **Graceful Failure Handling**: Non-critical scans use `continue-on-error`
 
 #### Security Tools
 
-1. **Safety**: Python package vulnerability scanner
+1. **pip-audit**: Python package vulnerability scanner (PyPA official tool)
 2. **Bandit**: Common security issue detection in Python code
 3. **Semgrep**: Advanced static analysis for security patterns
 4. **Dependency Review**: GitHub's built-in dependency vulnerability scanner
@@ -1087,7 +1087,7 @@ The workflows generate several artifacts for debugging and monitoring:
 - **Test Results**: Detailed test output and timing
 
 #### Security Artifacts
-- **Security Reports**: JSON reports from safety, bandit, semgrep
+- **Security Reports**: JSON reports from pip-audit, bandit, semgrep
 - **Vulnerability Reports**: Dependency vulnerability analysis
 - **Code Security Reports**: Static analysis results
 

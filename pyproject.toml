@@ -29,6 +29,7 @@ dev = [
     "bandit>=1.8.6",
     "semgrep>=1.85.0",
     "pyyaml>=6.0.2",
+    "pip-audit>=2.9.0",
 ]
 
 [tool.setuptools]

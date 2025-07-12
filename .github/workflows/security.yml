@@ -88,7 +88,11 @@ jobs:
         run: uv sync
       
       - name: Run security scan
-        run: make security
+        run: |
+          uv add --dev pip-audit bandit semgrep
+          uv run pip-audit --format=json --output=security-report.json
+          uv run bandit -r . -f json -o bandit-report.json -x tests/
+          uv run semgrep --config=auto --json --output=semgrep-report.json --timeout=60 .
       
       - name: Upload security reports
         if: always()
@@ -127,8 +131,8 @@ jobs:
       
       - name: Run vulnerability scan
         run: |
-          uv add --dev safety
-          uv run safety check --json --output vulnerability-report.json
+          uv add --dev pip-audit
+          uv run pip-audit --format=json --output=vulnerability-report.json
         continue-on-error: true
       
       - name: Upload vulnerability report
@@ -164,7 +168,7 @@ jobs:
         run: |
           uv add --dev bandit semgrep
           uv run bandit -r . -f json -o bandit-report.json -x tests/
-          uv run semgrep --config=auto --json --output=semgrep-report.json
+          uv run semgrep --config=auto --json --output=semgrep-report.json --timeout=60 .
         continue-on-error: true
       
       - name: Upload code security reports
