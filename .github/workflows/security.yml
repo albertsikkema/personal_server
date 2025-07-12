@@ -102,7 +102,13 @@ jobs:
         run: uv add --dev pip-audit
       
       - name: Run pip-audit
-        run: uv run pip-audit --format=json --output=vulnerability-report.json
+        run: |
+          echo "Running pip-audit vulnerability scan..."
+          uv run pip-audit --format=json --output=vulnerability-report.json || {
+            echo "pip-audit scan failed with exit code $?"
+            echo '{"vulnerabilities": [], "scan_failed": true, "error": "pip-audit execution failed"}' > vulnerability-report.json
+            exit 1
+          }
       
       - name: Generate pip-audit summary
         if: always()
@@ -111,22 +117,33 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           
           if [ -f "vulnerability-report.json" ]; then
-            vulnerability_count=$(cat vulnerability-report.json | jq '.vulnerabilities | length' 2>/dev/null || echo "0")
+            # Check if scan failed
+            scan_failed=$(cat vulnerability-report.json | jq -r '.scan_failed // false' 2>/dev/null)
             
-            if [ "$vulnerability_count" = "0" ]; then
-              echo "✅ **Dependencies**: No known vulnerabilities detected" >> $GITHUB_STEP_SUMMARY
-              echo "   - All Python packages are secure" >> $GITHUB_STEP_SUMMARY
+            if [ "$scan_failed" = "true" ]; then
+              echo "❌ **Dependencies**: pip-audit scan failed to execute" >> $GITHUB_STEP_SUMMARY
+              echo "   - Check workflow logs for detailed error information" >> $GITHUB_STEP_SUMMARY
+              echo "   - This may indicate dependency resolution or installation issues" >> $GITHUB_STEP_SUMMARY
             else
-              echo "❌ **Dependencies**: $vulnerability_count vulnerabilities found" >> $GITHUB_STEP_SUMMARY
-              echo "   - Check uploaded artifacts for detailed vulnerability report" >> $GITHUB_STEP_SUMMARY
-              echo "   - Update affected packages to secure versions" >> $GITHUB_STEP_SUMMARY
+              vulnerability_count=$(cat vulnerability-report.json | jq '.vulnerabilities | length' 2>/dev/null || echo "0")
               
-              echo "" >> $GITHUB_STEP_SUMMARY
-              echo "### Critical Vulnerabilities:" >> $GITHUB_STEP_SUMMARY
-              cat vulnerability-report.json | jq -r '.vulnerabilities[] | "- **\(.package)** \(.installed_version): \(.vulnerability_description)"' 2>/dev/null | head -5 >> $GITHUB_STEP_SUMMARY || echo "- See full report in artifacts" >> $GITHUB_STEP_SUMMARY
+              if [ "$vulnerability_count" = "0" ]; then
+                echo "✅ **Dependencies**: No known vulnerabilities detected" >> $GITHUB_STEP_SUMMARY
+                echo "   - All Python packages are secure" >> $GITHUB_STEP_SUMMARY
+              else
+                echo "❌ **Dependencies**: $vulnerability_count vulnerabilities found" >> $GITHUB_STEP_SUMMARY
+                echo "   - Check uploaded artifacts for detailed vulnerability report" >> $GITHUB_STEP_SUMMARY
+                echo "   - Update affected packages to secure versions" >> $GITHUB_STEP_SUMMARY
+                
+                echo "" >> $GITHUB_STEP_SUMMARY
+                echo "### Critical Vulnerabilities:" >> $GITHUB_STEP_SUMMARY
+                cat vulnerability-report.json | jq -r '.vulnerabilities[] | "- **\(.package)** \(.installed_version): \(.vulnerability_description)"' 2>/dev/null | head -5 >> $GITHUB_STEP_SUMMARY || echo "- See full report in artifacts" >> $GITHUB_STEP_SUMMARY
+              fi
             fi
           else
             echo "⚠️ **Dependencies**: Could not generate vulnerability report" >> $GITHUB_STEP_SUMMARY
+            echo "   - pip-audit command may have failed completely" >> $GITHUB_STEP_SUMMARY
+            echo "   - Check workflow logs for error details" >> $GITHUB_STEP_SUMMARY
           fi
           
           echo "" >> $GITHUB_STEP_SUMMARY
@@ -177,7 +194,13 @@ jobs:
         run: uv add --dev bandit
       
       - name: Run bandit
-        run: uv run bandit -r main.py models/ routers/ services/ mcp_integration/ dependencies.py config.py middleware.py utils/ -f json -o bandit-report.json
+        run: |
+          echo "Running bandit security scan..."
+          uv run bandit -r main.py models/ routers/ services/ mcp_integration/ dependencies.py config.py middleware.py utils/ -f json -o bandit-report.json || {
+            echo "bandit scan failed with exit code $?"
+            echo '{"results": [], "scan_failed": true, "error": "bandit execution failed"}' > bandit-report.json
+            exit 1
+          }
       
       - name: Generate bandit summary
         if: always()
@@ -186,28 +209,39 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           
           if [ -f "bandit-report.json" ]; then
-            # Count total issues by severity
-            high_count=$(cat bandit-report.json | jq '[.results[] | select(.issue_severity == "HIGH")] | length' 2>/dev/null || echo "0")
-            medium_count=$(cat bandit-report.json | jq '[.results[] | select(.issue_severity == "MEDIUM")] | length' 2>/dev/null || echo "0")
-            low_count=$(cat bandit-report.json | jq '[.results[] | select(.issue_severity == "LOW")] | length' 2>/dev/null || echo "0")
-            total_count=$(cat bandit-report.json | jq '.results | length' 2>/dev/null || echo "0")
+            # Check if scan failed
+            scan_failed=$(cat bandit-report.json | jq -r '.scan_failed // false' 2>/dev/null)
             
-            if [ "$total_count" = "0" ]; then
-              echo "✅ **Source Code**: No security issues detected" >> $GITHUB_STEP_SUMMARY
-              echo "   - All code follows security best practices" >> $GITHUB_STEP_SUMMARY
+            if [ "$scan_failed" = "true" ]; then
+              echo "❌ **Source Code**: bandit scan failed to execute" >> $GITHUB_STEP_SUMMARY
+              echo "   - Check workflow logs for detailed error information" >> $GITHUB_STEP_SUMMARY
+              echo "   - This may indicate issues with source file paths or syntax" >> $GITHUB_STEP_SUMMARY
             else
-              echo "❌ **Source Code**: $total_count security issues found" >> $GITHUB_STEP_SUMMARY
-              echo "   - 🔴 High: $high_count issues" >> $GITHUB_STEP_SUMMARY
-              echo "   - 🟡 Medium: $medium_count issues" >> $GITHUB_STEP_SUMMARY
-              echo "   - 🟢 Low: $low_count issues" >> $GITHUB_STEP_SUMMARY
-              echo "" >> $GITHUB_STEP_SUMMARY
-              echo "### Critical Issues Found:" >> $GITHUB_STEP_SUMMARY
-              cat bandit-report.json | jq -r '.results[] | select(.issue_severity == "HIGH" or .issue_severity == "MEDIUM") | "- **\(.test_id)** (Line \(.line_number)): \(.issue_text)"' 2>/dev/null | head -5 >> $GITHUB_STEP_SUMMARY || echo "- See full report in artifacts" >> $GITHUB_STEP_SUMMARY
-              echo "" >> $GITHUB_STEP_SUMMARY
-              echo "📋 **Action Required**: Fix security issues before deployment" >> $GITHUB_STEP_SUMMARY
+              # Count total issues by severity
+              high_count=$(cat bandit-report.json | jq '[.results[] | select(.issue_severity == "HIGH")] | length' 2>/dev/null || echo "0")
+              medium_count=$(cat bandit-report.json | jq '[.results[] | select(.issue_severity == "MEDIUM")] | length' 2>/dev/null || echo "0")
+              low_count=$(cat bandit-report.json | jq '[.results[] | select(.issue_severity == "LOW")] | length' 2>/dev/null || echo "0")
+              total_count=$(cat bandit-report.json | jq '.results | length' 2>/dev/null || echo "0")
+              
+              if [ "$total_count" = "0" ]; then
+                echo "✅ **Source Code**: No security issues detected" >> $GITHUB_STEP_SUMMARY
+                echo "   - All code follows security best practices" >> $GITHUB_STEP_SUMMARY
+              else
+                echo "❌ **Source Code**: $total_count security issues found" >> $GITHUB_STEP_SUMMARY
+                echo "   - 🔴 High: $high_count issues" >> $GITHUB_STEP_SUMMARY
+                echo "   - 🟡 Medium: $medium_count issues" >> $GITHUB_STEP_SUMMARY
+                echo "   - 🟢 Low: $low_count issues" >> $GITHUB_STEP_SUMMARY
+                echo "" >> $GITHUB_STEP_SUMMARY
+                echo "### Critical Issues Found:" >> $GITHUB_STEP_SUMMARY
+                cat bandit-report.json | jq -r '.results[] | select(.issue_severity == "HIGH" or .issue_severity == "MEDIUM") | "- **\(.test_id)** (Line \(.line_number)): \(.issue_text)"' 2>/dev/null | head -5 >> $GITHUB_STEP_SUMMARY || echo "- See full report in artifacts" >> $GITHUB_STEP_SUMMARY
+                echo "" >> $GITHUB_STEP_SUMMARY
+                echo "📋 **Action Required**: Fix security issues before deployment" >> $GITHUB_STEP_SUMMARY
+              fi
             fi
           else
             echo "⚠️ **Source Code**: Could not generate security report" >> $GITHUB_STEP_SUMMARY
+            echo "   - bandit command may have failed completely" >> $GITHUB_STEP_SUMMARY
+            echo "   - Check workflow logs for error details" >> $GITHUB_STEP_SUMMARY
           fi
           
           echo "" >> $GITHUB_STEP_SUMMARY
