@@ -11,11 +11,32 @@ class Settings(BaseSettings):
         validate_default=True,
     )
 
-    # API Key for authentication
-    API_KEY: str = Field(
-        ...,
-        min_length=8,
-        description="API key for authentication (minimum 8 characters)",
+    # Legacy API Key for backward compatibility (optional now)
+    API_KEY: str | None = Field(
+        default=None,
+        description="Legacy API key for backward compatibility",
+    )
+
+    # JWT Configuration
+    JWT_SECRET: str = Field(
+        ..., min_length=32, description="JWT secret key (minimum 32 characters)"
+    )
+    JWT_ALGORITHM: str = Field(default="HS256", description="JWT algorithm")
+    JWT_EXPIRE_MINUTES: int = Field(default=60, description="JWT expiration in minutes")
+    JWT_ISSUER: str = Field(default="fastapi-app", description="JWT issuer")
+    JWT_AUDIENCE: str = Field(default="fastapi-users", description="JWT audience")
+
+    # Database configuration
+    DATABASE_URL: str = Field(
+        default="sqlite+aiosqlite:///./fastapi_users.db", description="Database URL"
+    )
+
+    # For MCP (RSA keys for production)
+    JWT_PUBLIC_KEY: str | None = Field(
+        default=None, description="JWT public key for MCP"
+    )
+    JWT_PRIVATE_KEY: str | None = Field(
+        default=None, description="JWT private key for MCP"
     )
 
     # Application configuration
@@ -76,14 +97,16 @@ class Settings(BaseSettings):
     )
 
     @model_validator(mode="after")
-    def validate_api_key(self):
-        """Validate API key requirements."""
-        if not self.API_KEY or len(self.API_KEY.strip()) == 0:
+    def validate_secrets(self):
+        """Validate secret requirements."""
+        if not self.JWT_SECRET or len(self.JWT_SECRET.strip()) == 0:
             raise ValueError(
-                "API_KEY environment variable is required and cannot be empty"
+                "JWT_SECRET environment variable is required and cannot be empty"
             )
-        if len(self.API_KEY) < 8:
-            raise ValueError("API_KEY must be at least 8 characters long for security")
+        if len(self.JWT_SECRET) < 32:
+            raise ValueError(
+                "JWT_SECRET must be at least 32 characters long for security"
+            )
         return self
 
 

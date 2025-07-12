@@ -11,15 +11,16 @@ import httpx
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
+from auth.users import current_active_user
 from config import settings
-from dependencies import RequiredAuth
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from models.crawling import (
     CacheClearResponse,
     CrawlRequest,
     CrawlingHealthResponse,
     CrawlingResponse,
 )
+from models.user import User
 from pydantic import ValidationError
 from services.crawling import get_crawling_service
 
@@ -30,9 +31,9 @@ limiter = Limiter(key_func=get_remote_address)
 router = APIRouter(
     prefix="/crawl",
     tags=["crawling"],
-    dependencies=[RequiredAuth],  # All endpoints require authentication
+    # Authentication is now handled per-endpoint for better user tracking
     responses={
-        401: {"description": "API key missing or invalid"},
+        401: {"description": "Authentication required (JWT Bearer token)"},
         429: {"description": "Rate limit exceeded"},
         503: {"description": "Service temporarily unavailable"},
     },
@@ -106,7 +107,9 @@ router = APIRouter(
 async def crawl_urls(
     request: Request,  # Required for rate limiter  # noqa: ARG001
     crawl_request: CrawlRequest,
-    _api_key: str = RequiredAuth,
+    user: User = Depends(  # noqa: ARG001 - Required for auth but not used in logic
+        current_active_user
+    ),  # JWT Bearer token authentication
 ) -> CrawlingResponse:
     """
     Crawl URLs and extract content with optional screenshots and link extraction.
@@ -211,7 +214,9 @@ async def crawl_urls(
 @limiter.limit(settings.CRAWLING_USER_RATE_LIMIT)
 async def health_check(
     request: Request,  # Required for rate limiter  # noqa: ARG001
-    _api_key: str = RequiredAuth,
+    user: User = Depends(  # noqa: ARG001 - Required for auth but not used in logic
+        current_active_user
+    ),  # JWT Bearer token authentication
 ) -> CrawlingHealthResponse:
     """
     Get comprehensive health status of the crawling service.
@@ -258,7 +263,9 @@ async def health_check(
 @limiter.limit(settings.CRAWLING_USER_RATE_LIMIT)
 async def clear_cache(
     request: Request,  # Required for rate limiter  # noqa: ARG001
-    _api_key: str = RequiredAuth,
+    user: User = Depends(  # noqa: ARG001 - Required for auth but not used in logic
+        current_active_user
+    ),  # JWT Bearer token authentication
 ) -> CacheClearResponse:
     """
     Clear all cached crawling results.
@@ -293,7 +300,9 @@ async def clear_cache(
 @limiter.limit(settings.CRAWLING_USER_RATE_LIMIT)
 async def cleanup_expired_cache(
     request: Request,  # Required for rate limiter  # noqa: ARG001
-    _api_key: str = RequiredAuth,
+    user: User = Depends(  # noqa: ARG001 - Required for auth but not used in logic
+        current_active_user
+    ),  # JWT Bearer token authentication
 ) -> dict:
     """
     Clean up expired cache entries.
@@ -330,7 +339,9 @@ async def cleanup_expired_cache(
 @limiter.limit(settings.CRAWLING_USER_RATE_LIMIT)
 async def get_cache_stats(
     request: Request,  # Required for rate limiter  # noqa: ARG001
-    _api_key: str = RequiredAuth,
+    user: User = Depends(  # noqa: ARG001 - Required for auth but not used in logic
+        current_active_user
+    ),  # JWT Bearer token authentication
 ) -> dict:
     """
     Get detailed cache statistics.

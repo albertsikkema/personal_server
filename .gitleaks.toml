@@ -1,0 +1,28 @@
+# GitLeaks configuration for personal_server
+# This configuration helps prevent secrets from being committed
+
+title = "personal_server security configuration"
+
+# Paths to exclude from scanning
+[allowlist]
+paths = [
+    "tests/**",
+    "bruno/**", 
+    "ai_info/**",
+    "PRPs/**",
+    "*.md"
+]
+
+# Known safe test secrets to allow
+commits = [
+    "c3caa91", # Expired test JWT token in Bruno collection - already remediated
+    "027a659"  # JWT test tokens replaced with fake tokens
+]
+
+# Regexes for test patterns that are safe
+regexes = [
+    "test-.*-secret",
+    "test-.*-key", 
+    "fake\.jwt\.token",
+    "header\.payload\.signature"
+]

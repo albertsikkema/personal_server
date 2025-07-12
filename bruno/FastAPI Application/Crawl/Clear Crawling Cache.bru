@@ -7,9 +7,8 @@ meta {
 post {
   url: {{baseUrl}}/crawl/cache/clear
   body: none
-  auth: none
+  auth: inherit
 }
-
 
 tests {
   test("Status code is 200", function() {

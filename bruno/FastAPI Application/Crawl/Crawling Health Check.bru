@@ -7,9 +7,8 @@ meta {
 get {
   url: {{baseUrl}}/crawl/health
   body: none
-  auth: none
+  auth: inherit
 }
-
 
 tests {
   test("Status code is 200", function() {
