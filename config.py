@@ -96,6 +96,12 @@ class Settings(BaseSettings):
         description="Rate limit for users calling crawling endpoints",
     )
 
+    # CORS configuration
+    CORS_ALLOWED_ORIGINS: str = Field(
+        default="*",
+        description="Comma-separated list of allowed CORS origins. Use '*' for development, specific origins for production",
+    )
+
     @model_validator(mode="after")
     def validate_secrets(self):
         """Validate secret requirements."""

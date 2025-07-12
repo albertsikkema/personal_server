@@ -1,10 +1,10 @@
 """User model for FastAPI-Users integration."""
 
-from datetime import datetime
+from datetime import UTC, datetime
 
 from fastapi_users.db import SQLAlchemyBaseUserTableUUID
 from sqlalchemy import Column, DateTime, String
-from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import declarative_base
 
 Base = declarative_base()
 
@@ -28,7 +28,7 @@ class User(SQLAlchemyBaseUserTableUUID, Base):
     last_name = Column(String(50), nullable=True, doc="User's last name")
     created_at = Column(
         DateTime,
-        default=datetime.utcnow,
+        default=lambda: datetime.now(UTC),
         nullable=False,
         doc="Account creation timestamp",
     )
