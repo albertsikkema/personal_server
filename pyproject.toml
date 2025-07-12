@@ -17,7 +17,7 @@ dependencies = [
     "httpx",
     "fastmcp",
     # SECURITY FAULT: Intentionally vulnerable package for testing pip-audit
-    "requests==2.25.1",  # Known CVE-2021-33503: ReDoS vulnerability in requests
+    "werkzeug==0.15.6",  # Known CVE-2019-14806: Werkzeug directory traversal vulnerability
 ]
 
 [dependency-groups]
