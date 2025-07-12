@@ -6,7 +6,7 @@ service to convert city names to geographic coordinates via MCP.
 """
 
 import logging
-from typing import Annotated, Optional
+from typing import Annotated
 
 from fastmcp import FastMCP
 
@@ -15,7 +15,7 @@ from pydantic import Field
 from services.geocoding import GeocodingService
 
 # Global service instance
-_geocoding_service: Optional[GeocodingService] = None
+_geocoding_service: GeocodingService | None = None
 
 # Create MCP instance for tool decoration
 mcp = FastMCP("GecodingTools")
@@ -76,7 +76,7 @@ async def _geocode_city_impl(city: str) -> dict:
         import httpx
 
         # Categorize errors for better debugging
-        if isinstance(e, (httpx.ConnectError, httpx.TimeoutException)):
+        if isinstance(e, httpx.ConnectError | httpx.TimeoutException):
             logger.error(f"Network error for city '{city}': {e}")
             return {"error": "Network error", "city": city, "message": str(e)}
         else:

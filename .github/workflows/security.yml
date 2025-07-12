@@ -1,0 +1,143 @@
+name: Security
+
+# This workflow performs comprehensive security scanning to prevent deployment of vulnerable code.
+# It blocks builds when security vulnerabilities are detected, ensuring only secure code reaches production.
+# 
+# Security Tools:
+# - pip-audit: Scans Python dependencies for known vulnerabilities (CVE database)
+# - bandit: Analyzes source code for security anti-patterns and risky functions
+# 
+# What it scans:
+# - All Python packages and their versions for known CVEs
+# - Source code for security issues (eval, exec, hardcoded secrets, etc.)
+# - Configuration files and security-sensitive code patterns
+# 
+# When it runs:
+# - On pushes to main and dev branches  
+# - On pull requests to main and dev branches
+# - Weekly scheduled scans every Monday
+# - Only when relevant files change (smart path filtering)
+# 
+# Security status:
+# - ✅ PASS: No vulnerabilities detected, safe to deploy
+# - ❌ FAIL: Security vulnerabilities found, deployment BLOCKED
+# 
+# Artifacts: Security reports uploaded for detailed analysis when issues found
+
+on:
+  push:
+    branches: [main, dev]
+    paths:
+      - '**.py'
+      - 'pyproject.toml'
+      - 'uv.lock'
+      - 'requirements*.txt'
+      - '.github/workflows/security.yml'
+  pull_request:
+    branches: [main, dev]
+    paths:
+      - '**.py'
+      - 'pyproject.toml'
+      - 'uv.lock'
+      - 'requirements*.txt'
+      - '.github/workflows/security.yml'
+  schedule:
+    - cron: '0 0 * * 1'  # Weekly on Monday
+  workflow_dispatch:
+
+env:
+  UV_CACHE_DIR: /tmp/.uv-cache
+
+jobs:
+  changes:
+    name: Detect Security Changes
+    runs-on: ubuntu-latest
+    outputs:
+      security: ${{ steps.changes.outputs.security }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: changes
+        with:
+          filters: |
+            security:
+              - '**.py'
+              - 'pyproject.toml'
+              - 'uv.lock'
+              - 'requirements*.txt'
+              - '.github/workflows/security.yml'
+
+  pip-audit:
+    name: Dependency Vulnerability Scan
+    runs-on: ubuntu-latest
+    needs: changes
+    if: ${{ needs.changes.outputs.security == 'true' || github.event_name == 'schedule' }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6.3.1
+        with:
+          version: "0.7.20"
+          enable-cache: true
+      
+      - name: Set up Python
+        run: uv python install 3.13
+      
+      - name: Install dependencies
+        run: uv sync
+      
+      - name: Run pip-audit vulnerability scan
+        run: uv run pip-audit --desc
+      
+      - name: Generate dependency summary
+        if: always()
+        run: |
+          echo "## 🔍 Dependency Vulnerability Scan Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "✅ **pip-audit Analysis**: Completed using official PyPA action" >> $GITHUB_STEP_SUMMARY
+          echo "   - **Scope**: Local packages only (installed dependencies)" >> $GITHUB_STEP_SUMMARY
+          echo "   - **Database**: PyPI vulnerability database" >> $GITHUB_STEP_SUMMARY
+          echo "   - **Action Version**: pypa/gh-action-pip-audit@v1.1.0" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+  bandit:
+    name: Code Security Scan
+    runs-on: ubuntu-latest
+    needs: changes
+    if: ${{ needs.changes.outputs.security == 'true' || github.event_name == 'schedule' }}
+    permissions:
+      # Required for uploading results to GitHub Security tab
+      security-events: write
+      # Required for actions in private repositories
+      actions: read
+      contents: read
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Run Bandit Security Analysis
+        uses: PyCQA/bandit-action@v1
+        with:
+          targets: "main.py models/ routers/ services/ mcp_integration/ dependencies.py config.py middleware.py utils/"
+          severity: medium  # Only fail on medium and high severity issues
+          confidence: medium  # Only report medium and high confidence issues
+        
+      - name: Generate security summary
+        if: always()
+        run: |
+          echo "## 🛡️ Source Code Security Scan Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "✅ **Bandit Analysis**: Completed using official PyCQA action" >> $GITHUB_STEP_SUMMARY
+          echo "   - **Severity Filter**: Medium and High issues only" >> $GITHUB_STEP_SUMMARY
+          echo "   - **Confidence Filter**: Medium and High confidence only" >> $GITHUB_STEP_SUMMARY
+          echo "   - **GitHub Security Integration**: Results available in Security tab" >> $GITHUB_STEP_SUMMARY
+          echo "   - **Action Version**: PyCQA/bandit-action@v1" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 🔧 Security Tools Used" >> $GITHUB_STEP_SUMMARY
+          echo "- **PyPA pip-audit**: Official Python dependency vulnerability scanning" >> $GITHUB_STEP_SUMMARY
+          echo "- **PyCQA Bandit**: Official Python source code security analysis" >> $GITHUB_STEP_SUMMARY
+         

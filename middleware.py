@@ -1,6 +1,5 @@
 import uuid
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import UTC, datetime
 
 from fastapi.responses import JSONResponse
 from utils.logging import get_logger
@@ -11,7 +10,7 @@ logger = get_logger(__name__)
 
 # Standardized error response format for API errors, currently not used in the codebase
 def create_error_response(
-    status_code: int, detail: str, request_id: Optional[str] = None
+    status_code: int, detail: str, request_id: str | None = None
 ) -> JSONResponse:
     """
     Create standardized error response with request ID and timestamp.
@@ -32,6 +31,6 @@ def create_error_response(
         content={
             "detail": detail,
             "request_id": request_id,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
         },
     )

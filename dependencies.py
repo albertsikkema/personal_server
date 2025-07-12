@@ -1,6 +1,6 @@
 import uuid
-from datetime import datetime, timezone
-from typing import Annotated, Optional
+from datetime import UTC, datetime
+from typing import Annotated
 
 from config import settings
 from fastapi import Depends, HTTPException, Security, status
@@ -26,14 +26,14 @@ class AuthHTTPException(HTTPException):
         self.response_content = {
             "detail": message,
             "request_id": str(uuid.uuid4()),
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
         }
         # Pass the content as detail so FastAPI returns it directly
         super().__init__(status_code=status_code, detail=self.response_content)
 
 
 async def verify_api_key(
-    api_key: Annotated[Optional[str], Security(api_key_header)],
+    api_key: Annotated[str | None, Security(api_key_header)],
 ) -> str:
     """
     Verify the API key from the X-API-KEY header.
@@ -70,8 +70,8 @@ async def verify_api_key(
 
 
 async def optional_api_key(
-    api_key: Annotated[Optional[str], Security(api_key_header)],
-) -> Optional[str]:
+    api_key: Annotated[str | None, Security(api_key_header)],
+) -> str | None:
     """
     Optional API key verification for routes that can work with or without authentication.
 

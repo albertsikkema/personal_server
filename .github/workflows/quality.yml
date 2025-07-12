@@ -1,0 +1,179 @@
+name: Quality & Testing
+
+# This workflow ensures code quality and functionality on every push and pull request.
+# It runs comprehensive linting, formatting checks, and tests to maintain high code standards.
+# 
+# What it does:
+# - Detects changes to Python code, config files, and workflows
+# - Runs ruff linting and formatting checks (no auto-fixes in CI)
+# - Executes full test suite with coverage reporting
+# - Validates application can start and health endpoint responds
+# - Uses uv for 10-100x faster dependency management
+# - Caches dependencies for improved build performance
+# 
+# When it runs:
+# - On pushes to main and dev branches
+# - On pull requests to main and dev branches
+# - Only when relevant files change (smart path filtering)
+# 
+# Build status:
+# - ✅ PASS: Code meets quality standards, tests pass, app builds successfully
+# - ❌ FAIL: Linting errors, test failures, or build issues detected
+
+on:
+  push:
+    branches: [main, dev]
+    paths:
+      - '**.py'
+      - 'pyproject.toml'
+      - 'uv.lock'
+      - 'Makefile'
+      - '.github/workflows/**'
+  pull_request:
+    branches: [main, dev]
+    paths:
+      - '**.py'
+      - 'pyproject.toml'
+      - 'uv.lock'
+      - 'Makefile'
+      - '.github/workflows/**'
+  workflow_dispatch:  # Manual trigger
+
+env:
+  UV_CACHE_DIR: /tmp/.uv-cache
+
+jobs:
+  changes:
+    name: Detect Changes
+    runs-on: ubuntu-latest
+    outputs:
+      python: ${{ steps.changes.outputs.python }}
+      docs: ${{ steps.changes.outputs.docs }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: changes
+        with:
+          filters: |
+            python:
+              - '**.py'
+              - 'pyproject.toml'
+              - 'uv.lock'
+              - 'Makefile'
+            docs:
+              - 'README.md'
+              - 'PRPs/**'
+              - 'ai_info/**'
+
+  quality:
+    name: Code Quality
+    runs-on: ubuntu-latest
+    needs: changes
+    if: ${{ needs.changes.outputs.python == 'true' }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6.3.1
+        with:
+          version: "0.7.20"
+          enable-cache: true
+      
+      - name: Set up Python
+        run: uv python install 3.13
+      
+      - name: Restore uv cache
+        uses: actions/cache@v4
+        with:
+          path: /tmp/.uv-cache
+          key: uv-${{ runner.os }}-${{ github.ref_name }}-${{ hashFiles('uv.lock') }}
+          restore-keys: |
+            uv-${{ runner.os }}-${{ github.ref_name }}-
+            uv-${{ runner.os }}-${{ hashFiles('uv.lock') }}
+            uv-${{ runner.os }}
+      
+      - name: Install dependencies
+        run: uv sync
+      
+      - name: Run make check-commit
+        run: make check-commit
+      
+      - name: Generate quality summary
+        if: always()
+        run: |
+          echo "## 📊 Quality & Testing Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # Check if linting passed
+          if make check-commit > /dev/null 2>&1; then
+            echo "✅ **Code Quality**: All linting and formatting checks passed" >> $GITHUB_STEP_SUMMARY
+            echo "✅ **Tests**: All tests passed successfully" >> $GITHUB_STEP_SUMMARY
+            echo "✅ **Build**: Application builds and starts correctly" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ **Code Quality**: Linting or formatting issues detected" >> $GITHUB_STEP_SUMMARY
+            echo "   - Run \`make fix\` locally to auto-fix issues" >> $GITHUB_STEP_SUMMARY
+            echo "   - Run \`make test\` to reproduce test failures" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 🔧 Tools Used" >> $GITHUB_STEP_SUMMARY
+          echo "- **Ruff**: Python linting and formatting" >> $GITHUB_STEP_SUMMARY
+          echo "- **Pytest**: Test execution with coverage" >> $GITHUB_STEP_SUMMARY
+          echo "- **uv**: Fast dependency management" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [ -d "htmlcov" ]; then
+            echo "📈 **Coverage Report**: [View workflow run and download coverage-report artifact](https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID)" >> $GITHUB_STEP_SUMMARY
+          fi
+      
+      - name: Upload coverage reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: htmlcov/
+          retention-days: 30
+      
+      - name: Minimize uv cache
+        run: uv cache prune --ci
+
+  build-check:
+    name: Build Check
+    runs-on: ubuntu-latest
+    needs: changes
+    if: ${{ needs.changes.outputs.python == 'true' }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6.3.1
+        with:
+          version: "0.7.20"
+      
+      - name: Set up Python
+        run: uv python install 3.13
+      
+      - name: Install dependencies
+        run: uv sync
+      
+      - name: Test application startup
+        env:
+          API_KEY: "test-api-key-for-ci-build-check"
+        run: |
+          echo "Testing application import..."
+          uv run python -c "from main import app; print('✅ Application imports successfully')"
+          echo "Testing FastAPI app creation..."
+          uv run python -c "from main import app; assert app is not None; print('✅ FastAPI app created successfully')"
+      
+      - name: Run development server test
+        env:
+          API_KEY: "test-api-key-for-ci-build-check"
+        run: |
+          timeout 10s uv run uvicorn main:app --host 0.0.0.0 --port 8000 &
+          sleep 5
+          curl -f http://localhost:8000/health || exit 1
+          echo "✅ Development server starts successfully"

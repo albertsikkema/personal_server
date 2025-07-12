@@ -1,5 +1,3 @@
-from typing import Optional
-
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from pydantic import Field, model_validator
@@ -65,7 +63,7 @@ class Settings(BaseSettings):
         default="https://crawl4ai.test001.nl",
         description="Base URL for Crawl4AI instance",
     )
-    CRAWL4AI_API_TOKEN: Optional[str] = Field(
+    CRAWL4AI_API_TOKEN: str | None = Field(
         default=None,
         description="Optional JWT token for Crawl4AI authentication (if enabled on instance)",
     )
