@@ -140,7 +140,7 @@ jobs:
         run: uv add --dev bandit
       
       - name: Run bandit
-        run: uv run bandit -r . -f json -o bandit-report.json -x tests/,.venv/,personal_server.egg-info/ || true
+        run: uv run bandit -r main.py models/ routers/ services/ mcp_integration/ dependencies.py config.py middleware.py utils/ -f json -o bandit-report.json || true
         continue-on-error: true
       
       - name: Upload bandit report
