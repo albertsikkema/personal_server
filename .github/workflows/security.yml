@@ -162,7 +162,7 @@ jobs:
                 echo "   - All Python packages are secure" >> $GITHUB_STEP_SUMMARY
               else
                 echo "❌ **Dependencies**: $vulnerability_count vulnerabilities found in $vulnerable_packages package(s)" >> $GITHUB_STEP_SUMMARY
-                echo "   - 📄 [Download detailed vulnerability report](../artifacts?name=vulnerability-report)" >> $GITHUB_STEP_SUMMARY
+                echo "   - 📄 [Download detailed vulnerability report](https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID)" >> $GITHUB_STEP_SUMMARY
                 echo "   - Update affected packages to secure versions" >> $GITHUB_STEP_SUMMARY
                 
                 echo "" >> $GITHUB_STEP_SUMMARY
@@ -291,7 +291,7 @@ jobs:
                 echo "   - 🔴 High: $high_count issues" >> $GITHUB_STEP_SUMMARY
                 echo "   - 🟡 Medium: $medium_count issues" >> $GITHUB_STEP_SUMMARY
                 echo "   - 🟢 Low: $low_count issues" >> $GITHUB_STEP_SUMMARY
-                echo "   - 📄 [Download detailed security report](../artifacts?name=bandit-report)" >> $GITHUB_STEP_SUMMARY
+                echo "   - 📄 [Download detailed security report](https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID)" >> $GITHUB_STEP_SUMMARY
                 echo "" >> $GITHUB_STEP_SUMMARY
                 echo "### Critical Issues Found:" >> $GITHUB_STEP_SUMMARY
                 cat bandit-report.json | jq -r '.results[] | select(.issue_severity == "HIGH" or .issue_severity == "MEDIUM") | "- **\(.test_id)** (Line \(.line_number)): \(.issue_text)"' 2>/dev/null | head -5 >> $GITHUB_STEP_SUMMARY || echo "- See full report in artifacts" >> $GITHUB_STEP_SUMMARY
