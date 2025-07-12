@@ -1,5 +1,25 @@
 name: Quality & Testing
 
+# This workflow ensures code quality and functionality on every push and pull request.
+# It runs comprehensive linting, formatting checks, and tests to maintain high code standards.
+# 
+# What it does:
+# - Detects changes to Python code, config files, and workflows
+# - Runs ruff linting and formatting checks (no auto-fixes in CI)
+# - Executes full test suite with coverage reporting
+# - Validates application can start and health endpoint responds
+# - Uses uv for 10-100x faster dependency management
+# - Caches dependencies for improved build performance
+# 
+# When it runs:
+# - On pushes to main and dev branches
+# - On pull requests to main and dev branches
+# - Only when relevant files change (smart path filtering)
+# 
+# Build status:
+# - ✅ PASS: Code meets quality standards, tests pass, app builds successfully
+# - ❌ FAIL: Linting errors, test failures, or build issues detected
+
 on:
   push:
     branches: [main, dev]

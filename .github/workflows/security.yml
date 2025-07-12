@@ -1,5 +1,29 @@
 name: Security
 
+# This workflow performs comprehensive security scanning to prevent deployment of vulnerable code.
+# It blocks builds when security vulnerabilities are detected, ensuring only secure code reaches production.
+# 
+# Security Tools:
+# - pip-audit: Scans Python dependencies for known vulnerabilities (CVE database)
+# - bandit: Analyzes source code for security anti-patterns and risky functions
+# 
+# What it scans:
+# - All Python packages and their versions for known CVEs
+# - Source code for security issues (eval, exec, hardcoded secrets, etc.)
+# - Configuration files and security-sensitive code patterns
+# 
+# When it runs:
+# - On pushes to main and dev branches  
+# - On pull requests to main and dev branches
+# - Weekly scheduled scans every Monday
+# - Only when relevant files change (smart path filtering)
+# 
+# Security status:
+# - ✅ PASS: No vulnerabilities detected, safe to deploy
+# - ❌ FAIL: Security vulnerabilities found, deployment BLOCKED
+# 
+# Artifacts: Security reports uploaded for detailed analysis when issues found
+
 on:
   push:
     branches: [main, dev]
