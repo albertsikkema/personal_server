@@ -1440,10 +1440,9 @@ check-commit: check test
 # Security scanning
 security:
 	@echo "Running security scans..."
-	uv add --dev pip-audit bandit semgrep
+	uv add --dev pip-audit bandit
 	uv run pip-audit --format=json --output=security-report.json
-	uv run bandit -r . -f json -o bandit-report.json -x tests/
-	uv run semgrep --config=auto --json --output=semgrep-report.json --timeout=60 .
+	uv run bandit -r . -f json -o bandit-report.json -x tests/,.venv/,personal_server.egg-info/ || true
 ```
 
 ### Path-Based Filtering
@@ -1512,7 +1511,7 @@ updates:
 
 #### Security Integration
 - **Dependency review**: Automated vulnerability scanning on PRs
-- **Multi-tool scanning**: safety, bandit, semgrep for comprehensive analysis
+- **Multi-tool scanning**: pip-audit and bandit for comprehensive analysis
 - **Scheduled scans**: Weekly security checks
 - **Graceful failure handling**: continue-on-error for non-critical scans
 

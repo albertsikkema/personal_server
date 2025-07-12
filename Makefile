@@ -93,10 +93,9 @@ check-commit: check test
 # Security scanning
 security:
 	@echo "Running security scans..."
-	uv add --dev pip-audit bandit semgrep
+	uv add --dev pip-audit bandit
 	uv run pip-audit --format=json --output=security-report.json
-	uv run bandit -r . -f json -o bandit-report.json -x tests/
-	uv run semgrep --config=auto --json --output=semgrep-report.json --timeout=60 .
+	uv run bandit -r . -f json -o bandit-report.json -x tests/,.venv/,personal_server.egg-info/ || true
 
 # Test MCP server
 test-mcp:

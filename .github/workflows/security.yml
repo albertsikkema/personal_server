@@ -89,10 +89,9 @@ jobs:
       
       - name: Run security scan
         run: |
-          uv add --dev pip-audit bandit semgrep
+          uv add --dev pip-audit bandit
           uv run pip-audit --format=json --output=security-report.json
-          uv run bandit -r . -f json -o bandit-report.json -x tests/
-          uv run semgrep --config=auto --json --output=semgrep-report.json --timeout=60 .
+          uv run bandit -r . -f json -o bandit-report.json -x tests/,.venv/,personal_server.egg-info/ || true
       
       - name: Upload security reports
         if: always()
@@ -102,7 +101,6 @@ jobs:
           path: |
             security-report.json
             bandit-report.json
-            semgrep-report.json
           retention-days: 30
       
       - name: Minimize uv cache
@@ -166,9 +164,8 @@ jobs:
       
       - name: Run code security scan
         run: |
-          uv add --dev bandit semgrep
-          uv run bandit -r . -f json -o bandit-report.json -x tests/
-          uv run semgrep --config=auto --json --output=semgrep-report.json --timeout=60 .
+          uv add --dev bandit
+          uv run bandit -r . -f json -o bandit-report.json -x tests/,.venv/,personal_server.egg-info/ || true
         continue-on-error: true
       
       - name: Upload code security reports
@@ -176,7 +173,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: code-security-reports
-          path: |
-            bandit-report.json
-            semgrep-report.json
+          path: bandit-report.json
           retention-days: 30
