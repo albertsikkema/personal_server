@@ -98,7 +98,7 @@ class CrawlingCache:
 
         # Generate deterministic hash
         cache_string = json.dumps(cache_data, sort_keys=True, separators=(",", ":"))
-        return hashlib.md5(cache_string.encode()).hexdigest()
+        return hashlib.md5(cache_string.encode(), usedforsecurity=False).hexdigest()
 
     def get(self, url: str, options: dict[str, Any]) -> dict[str, Any] | None:
         """

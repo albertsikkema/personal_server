@@ -56,7 +56,7 @@ class GeocodingCache:
             MD5 hash of normalized city name
         """
         normalized = city.lower().strip()
-        return hashlib.md5(normalized.encode()).hexdigest()
+        return hashlib.md5(normalized.encode(), usedforsecurity=False).hexdigest()
 
     def get(self, city: str) -> dict | None:
         """
