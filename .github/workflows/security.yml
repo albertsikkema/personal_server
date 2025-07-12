@@ -139,30 +139,8 @@ jobs:
       - name: Install bandit
         run: uv add --dev bandit
       
-      - name: Debug environment and files
-        run: |
-          echo "Current working directory:"
-          pwd
-          echo "Files being scanned:"
-          ls -la main.py models/ routers/ services/ mcp_integration/ dependencies.py config.py middleware.py utils/
-          echo "Checking for eval in main.py:"
-          grep -n "eval" main.py || echo "No eval found"
-          echo "Bandit version:"
-          uv run bandit --version
-        
       - name: Run bandit
-        run: |
-          echo "Running bandit scan..."
-          uv run bandit -r main.py models/ routers/ services/ mcp_integration/ dependencies.py config.py middleware.py utils/ -f json -o bandit-report.json || true
-          echo "Bandit scan completed"
-          echo "Checking bandit report content:"
-          if [ -f bandit-report.json ]; then
-            echo "Report file exists, size: $(wc -c < bandit-report.json) bytes"
-            echo "B307 issues found:"
-            cat bandit-report.json | jq -r '.results[] | select(.test_id == "B307") | "Found B307 at line \(.line_number): \(.issue_text)"' || echo "No B307 issues or JSON parse error"
-          else
-            echo "ERROR: bandit-report.json not created"
-          fi
+        run: uv run bandit -r main.py models/ routers/ services/ mcp_integration/ dependencies.py config.py middleware.py utils/ -f json -o bandit-report.json || true
         continue-on-error: true
       
       - name: Upload bandit report
