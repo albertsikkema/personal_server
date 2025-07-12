@@ -685,17 +685,38 @@ The application includes a comprehensive web crawling API that integrates with C
 
 **📖 Detailed Implementation**: See [crawling-implementation.md](ai_info/app/docs/crawling-implementation.md) for complete patterns, examples, and configuration.
 
-## 🤖 MCP Integration
+## 🤖 MCP Integration with JWT Bearer Authentication
 
-The application includes a FastMCP server that exposes geocoding functionality through the Model Context Protocol.
+The application includes a FastMCP server that exposes geocoding functionality through the Model Context Protocol with JWT Bearer token authentication.
 
-**Integration**: Mounted at `/mcp` with proper lifespan management and tool registration
+**Security**: Dual authentication system supporting both FastAPI-Users and legacy API key authentication
 
-**Key Principles**: Service reuse (no code duplication), singleton pattern, structured error handling, comprehensive testing
+**Integration**: Mounted at `/mcp-server` with proper lifespan management and tool registration
 
-**Tools Available**: `geocode_city` with type-safe parameters and error handling
+**Authentication Flow**:
+1. **FastAPI-Users**: Authenticate via `/auth/jwt/login` → Request MCP token via `/auth/mcp-token` → Use Bearer token for MCP access
+2. **Legacy API Key**: Use X-API-KEY → Request MCP token via `/auth/mcp-token/legacy` → Use Bearer token for MCP access
 
-**Benefits**: Same caching/rate limiting as REST API, easy to extend with additional tools
+**Key Components**:
+- **RSA Key Management**: `services/mcp_rsa_keys.py` - FastMCP RSAKeyPair integration with auto-generation in development
+- **MCP Authentication Service**: `services/mcp_auth.py` - Bridges HMAC-based FastAPI-Users with RSA-based MCP requirements  
+- **Token Generation Endpoints**: `routers/mcp_auth.py` - Dual authentication support with comprehensive error handling
+- **MCP Server**: `mcp_integration/server.py` - BearerAuthProvider with RSA JWT validation
+
+**Configuration**:
+```bash
+# MCP JWT Configuration (extends existing JWT settings)
+MCP_JWT_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----..."  # RSA private key (PEM format)
+MCP_JWT_PUBLIC_KEY="-----BEGIN PUBLIC KEY-----..."    # RSA public key (PEM format)
+MCP_JWT_ALGORITHM=RS256                               # RSA algorithm
+MCP_JWT_EXPIRE_MINUTES=60                            # Token expiration
+MCP_JWT_ISSUER=personal-server                       # Token issuer
+MCP_JWT_AUDIENCE=mcp-server                          # Token audience
+```
+
+**Development**: Auto-generates RSA keys with warnings. Production requires explicit keys.
+
+**Tools Available**: `geocode_city` with type-safe parameters, error handling, and same caching/rate limiting as REST API
 
 **📖 Detailed Implementation**: See [mcp-implementation.md](ai_info/app/docs/mcp-implementation.md) for complete patterns, testing, and extension examples.
 
@@ -728,3 +749,10 @@ The project implements a comprehensive CI/CD pipeline using GitHub Actions with 
 - **MCP Integration**: [mcp-implementation.md](ai_info/app/docs/mcp-implementation.md)
 - **CI/CD Workflows**: [ci-cd-patterns.md](ai_info/app/docs/ci-cd-patterns.md)
 
+
+### MCP Authentication Patterns
+- **RSA Key Management**: FastMCP RSAKeyPair integration with singleton pattern and environment fallbacks
+- **Dual Authentication**: FastAPI-Users (HMAC JWT) + Legacy API Key → RSA JWT for MCP access
+- **Token Generation**: Service-based pattern with comprehensive error handling and logging
+- **Bearer Authentication**: FastMCP BearerAuthProvider with RSA JWT validation
+- **Development Fallback**: Auto-generation with production warnings and validation

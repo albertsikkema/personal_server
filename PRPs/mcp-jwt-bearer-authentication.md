@@ -16,7 +16,7 @@ Implement JWT Bearer token authentication for MCP endpoints using RSA key pairs 
 - ⚠️ Inconsistent security model across application components
 
 **Root Cause:**
-FastMCP framework requires RSA-based JWT tokens for the `BearerAuthProvider`, while the main FastAPI application uses HMAC-based JWT with simple API keys. The existing TODO comments in mcp_integration/server.py indicate this is a planned feature.
+FastMCP framework requires RSA-based JWT tokens for the `BearerAuthProvider`, while the main FastAPI application uses FastAPI-Users with HMAC-based JWT (HS256). The application has evolved beyond simple API keys to a full user management system, but MCP integration still needs the RSA bridge for proper authentication. The existing TODO comments in mcp_integration/server.py indicate this is a planned feature.
 
 ### Critical Context & Documentation
 
@@ -33,10 +33,14 @@ FastMCP framework requires RSA-based JWT tokens for the `BearerAuthProvider`, wh
 - **Service Reuse Pattern**: Singleton pattern for service management (mcp_integration/tools/geocoding.py:27-37)
 
 #### Current Authentication Infrastructure  
-- **API Key System**: dependencies.py:35-69 - X-API-KEY header authentication
-- **Configuration**: config.py:14-19 - Single API_KEY setting
+- **FastAPI-Users System**: Full JWT Bearer authentication with user management (auth/)
+  - **User Model**: models/user.py - Complete user management with roles, timestamps, database
+  - **JWT Backend**: auth/backend.py - HMAC-based JWT authentication (HS256)
+  - **Authentication Routes**: /auth/jwt/login, /auth/register, /users (implemented)
+  - **Dependencies**: current_active_user, current_verified_user, current_superuser
+- **Legacy API Key**: dependencies.py:60 - Optional X-API-KEY for backward compatibility
+- **Configuration**: config.py - Full JWT settings with JWT_SECRET, JWT_ALGORITHM, JWT_EXPIRE_MINUTES
 - **Error Handling**: dependencies.py:21-33 - Custom AuthHTTPException with request tracking
-- **Dependencies**: RequiredAuth = Depends(verify_api_key) (line 107)
 
 #### Related Dependencies
 - **cryptography>=43.0.1**: Already available (pyproject.toml:21) - Required for RSA key generation
@@ -45,130 +49,132 @@ FastMCP framework requires RSA-based JWT tokens for the `BearerAuthProvider`, wh
 
 ### Implementation Blueprint
 
-#### 1. RSA Key Management System
+#### 1. RSA Key Management System (Simplified with FastMCP)
 
-**RSA Key Generation Utility**
+**RSA Key Manager using FastMCP Built-ins**
 ```python
-# utils/rsa_keys.py
-from cryptography.hazmat.primitives import serialization
-from cryptography.hazmat.primitives.asymmetric import rsa
-from typing import Tuple
+# services/mcp_rsa_keys.py
+from fastmcp.server.auth.providers.bearer import RSAKeyPair
+from typing import Optional
 import logging
+from config import settings
 
 logger = logging.getLogger(__name__)
 
-class RSAKeyManager:
+class MCPRSAKeyManager:
     """
-    RSA key pair manager for JWT signing and verification.
+    MCP RSA key pair manager using FastMCP built-in RSAKeyPair.
     
-    Handles generation, storage, and retrieval of RSA key pairs
-    required for MCP JWT authentication.
+    Leverages FastMCP's built-in key generation and management
+    for seamless integration with BearerAuthProvider.
     """
     
     def __init__(self):
-        self.private_key = None
-        self.public_key = None
+        self._key_pair: Optional[RSAKeyPair] = None
     
-    def generate_key_pair(self) -> Tuple[str, str]:
+    def get_or_create_key_pair(self) -> RSAKeyPair:
         """
-        Generate RSA key pair for JWT signing.
+        Get existing key pair or create new one.
         
         Returns:
-            Tuple[str, str]: (private_key_pem, public_key_pem)
+            RSAKeyPair: FastMCP RSA key pair instance
         
         Raises:
-            Exception: If key generation fails
+            Exception: If key generation or loading fails
         """
-        try:
-            # Generate private key (2048-bit RSA)
-            private_key = rsa.generate_private_key(
-                public_exponent=65537,
-                key_size=2048,
-            )
-            
-            # Serialize private key to PEM format
-            private_pem = private_key.private_bytes(
-                encoding=serialization.Encoding.PEM,
-                format=serialization.PrivateFormat.PKCS8,
-                encryption_algorithm=serialization.NoEncryption()
-            )
-            
-            # Serialize public key to PEM format
-            public_key = private_key.public_key()
-            public_pem = public_key.public_bytes(
-                encoding=serialization.Encoding.PEM,
-                format=serialization.PublicFormat.SubjectPublicKeyInfo
-            )
-            
-            logger.info("RSA key pair generated successfully")
-            return private_pem.decode(), public_pem.decode()
-            
-        except Exception as e:
-            logger.error(f"Failed to generate RSA key pair: {e}")
-            raise
-
-    def load_keys_from_env(self, private_key_pem: str, public_key_pem: str) -> None:
+        if self._key_pair is None:
+            try:
+                # Try loading from environment first
+                if settings.MCP_JWT_PRIVATE_KEY and settings.MCP_JWT_PUBLIC_KEY:
+                    logger.info("Loading RSA keys from environment")
+                    # FastMCP can load from PEM strings
+                    self._key_pair = RSAKeyPair.from_pem(
+                        private_key_pem=settings.MCP_JWT_PRIVATE_KEY,
+                        public_key_pem=settings.MCP_JWT_PUBLIC_KEY
+                    )
+                else:
+                    # Generate new key pair for development
+                    if settings.ENV == "development":
+                        logger.warning(
+                            "Auto-generating RSA keys for development. "
+                            "Use explicit keys in production!"
+                        )
+                        self._key_pair = RSAKeyPair.generate()
+                    else:
+                        raise ValueError(
+                            "MCP RSA keys required in production. "
+                            "Set MCP_JWT_PRIVATE_KEY and MCP_JWT_PUBLIC_KEY."
+                        )
+                        
+                logger.info("MCP RSA key pair initialized successfully")
+                
+            except Exception as e:
+                logger.error(f"Failed to initialize RSA key pair: {e}")
+                raise
+                
+        return self._key_pair
+    
+    def create_token(self, user_id: str, email: str) -> str:
         """
-        Load RSA keys from environment variables.
+        Create JWT token for MCP access using FastMCP built-in method.
         
         Args:
-            private_key_pem: Private key in PEM format
-            public_key_pem: Public key in PEM format
+            user_id: User ID from FastAPI-Users
+            email: User email from FastAPI-Users
         
-        Raises:
-            ValueError: If keys are invalid or malformed
+        Returns:
+            str: JWT token for MCP authentication
         """
-        try:
-            # Validate private key format
-            serialization.load_pem_private_key(
-                private_key_pem.encode(),
-                password=None,
-            )
-            
-            # Validate public key format  
-            serialization.load_pem_public_key(
-                public_key_pem.encode()
-            )
-            
-            self.private_key = private_key_pem
-            self.public_key = public_key_pem
-            logger.info("RSA keys loaded from environment")
-            
-        except Exception as e:
-            logger.error(f"Invalid RSA keys: {e}")
-            raise ValueError(f"Invalid RSA key format: {e}")
+        key_pair = self.get_or_create_key_pair()
+        
+        # Use FastMCP's built-in token creation
+        return key_pair.create_token(
+            audience=settings.MCP_JWT_AUDIENCE,
+            subject=user_id,
+            issuer=settings.MCP_JWT_ISSUER,
+            additional_claims={
+                "email": email,
+                "scope": "mcp-access"
+            },
+            expires_in_minutes=settings.MCP_JWT_EXPIRE_MINUTES
+        )
 
 # Singleton instance
-_rsa_key_manager: RSAKeyManager | None = None
+_mcp_rsa_manager: Optional[MCPRSAKeyManager] = None
 
-def get_rsa_key_manager() -> RSAKeyManager:
-    """Get or create the RSA key manager instance."""
-    global _rsa_key_manager
-    if _rsa_key_manager is None:
-        _rsa_key_manager = RSAKeyManager()
-    return _rsa_key_manager
+def get_mcp_rsa_manager() -> MCPRSAKeyManager:
+    """Get or create the MCP RSA key manager instance."""
+    global _mcp_rsa_manager
+    if _mcp_rsa_manager is None:
+        _mcp_rsa_manager = MCPRSAKeyManager()
+    return _mcp_rsa_manager
 ```
 
-#### 2. Configuration Updates
+#### 2. Configuration Updates (Extending Existing JWT Settings)
 
-**Updated Settings with RSA Key Support**
+**Updated Settings with MCP-Specific Extensions**
 ```python
-# config.py additions
-from typing import Optional
-from pydantic import Field, model_validator
-
+# config.py additions to existing Settings class
 class Settings(BaseSettings):
-    # Existing settings...
-    API_KEY: str = Field(..., min_length=8, description="API key for authentication")
+    # Existing FastAPI-Users JWT settings (HMAC-based)
+    JWT_SECRET: str = Field(..., min_length=32, description="JWT secret for main app")
+    JWT_ALGORITHM: str = Field(default="HS256", description="HMAC algorithm for main app")
+    JWT_EXPIRE_MINUTES: int = Field(default=60, description="JWT expiration in minutes")
+    JWT_ISSUER: str = Field(default="fastapi-app", description="JWT issuer")
+    JWT_AUDIENCE: str = Field(default="fastapi-users", description="JWT audience")
     
-    # New MCP JWT Configuration  
-    MCP_JWT_PRIVATE_KEY: Optional[str] = Field(
+    # Existing RSA key fields (currently unused, now for MCP)
+    JWT_PRIVATE_KEY: str | None = Field(default=None, description="JWT private key for MCP")
+    JWT_PUBLIC_KEY: str | None = Field(default=None, description="JWT public key for MCP")
+    
+    # New MCP-specific JWT Configuration (extends existing)
+    MCP_JWT_PRIVATE_KEY: str | None = Field(
         default=None,
-        description="RSA private key for MCP JWT signing (PEM format)"
+        description="RSA private key for MCP JWT signing (PEM format) - fallback to JWT_PRIVATE_KEY"
     )
-    MCP_JWT_PUBLIC_KEY: Optional[str] = Field(
+    MCP_JWT_PUBLIC_KEY: str | None = Field(
         default=None,
-        description="RSA public key for MCP JWT verification (PEM format)"
+        description="RSA public key for MCP JWT verification (PEM format) - fallback to JWT_PUBLIC_KEY"
     )
     MCP_JWT_ALGORITHM: str = Field(
         default="RS256",
@@ -176,117 +182,77 @@ class Settings(BaseSettings):
     )
     MCP_JWT_EXPIRE_MINUTES: int = Field(
         default=60,
-        description="MCP JWT token expiration in minutes"
+        description="MCP JWT token expiration in minutes (inherits from JWT_EXPIRE_MINUTES)"
     )
     MCP_JWT_ISSUER: str = Field(
         default="personal-server",
-        description="JWT token issuer"
+        description="JWT token issuer for MCP"
     )
     MCP_JWT_AUDIENCE: str = Field(
         default="mcp-server",
-        description="JWT token audience"
-    )
-    
-    # Development settings
-    MCP_JWT_AUTO_GENERATE_KEYS: bool = Field(
-        default=True,
-        description="Auto-generate RSA keys in development mode"
+        description="JWT token audience for MCP"
     )
     
     @model_validator(mode="after")
-    def validate_mcp_jwt_config(self):
-        """Validate MCP JWT configuration."""
-        # In production, require explicit keys
+    def validate_jwt_settings(self):
+        """Validate JWT configuration for both main app and MCP."""
+        # Use fallback keys if MCP-specific keys not provided
+        if not self.MCP_JWT_PRIVATE_KEY and self.JWT_PRIVATE_KEY:
+            self.MCP_JWT_PRIVATE_KEY = self.JWT_PRIVATE_KEY
+            
+        if not self.MCP_JWT_PUBLIC_KEY and self.JWT_PUBLIC_KEY:
+            self.MCP_JWT_PUBLIC_KEY = self.JWT_PUBLIC_KEY
+            
+        # Inherit expiration from main JWT settings if not specified
+        if self.MCP_JWT_EXPIRE_MINUTES == 60 and self.JWT_EXPIRE_MINUTES != 60:
+            self.MCP_JWT_EXPIRE_MINUTES = self.JWT_EXPIRE_MINUTES
+        
+        # In production, warn if using auto-generation
         if self.ENV == "production":
             if not self.MCP_JWT_PRIVATE_KEY or not self.MCP_JWT_PUBLIC_KEY:
-                if not self.MCP_JWT_AUTO_GENERATE_KEYS:
-                    raise ValueError(
-                        "MCP_JWT_PRIVATE_KEY and MCP_JWT_PUBLIC_KEY are required in production"
-                    )
-        
-        # Validate key format if provided
-        if self.MCP_JWT_PRIVATE_KEY and self.MCP_JWT_PUBLIC_KEY:
-            try:
-                from utils.rsa_keys import get_rsa_key_manager
-                key_manager = get_rsa_key_manager()
-                key_manager.load_keys_from_env(
-                    self.MCP_JWT_PRIVATE_KEY,
-                    self.MCP_JWT_PUBLIC_KEY
+                logger.warning(
+                    "MCP will auto-generate RSA keys. "
+                    "Set MCP_JWT_PRIVATE_KEY and MCP_JWT_PUBLIC_KEY for production."
                 )
-            except Exception as e:
-                raise ValueError(f"Invalid MCP JWT keys: {e}")
         
         return self
 ```
 
-#### 3. MCP Authentication Service
+#### 3. MCP Authentication Service (FastAPI-Users Integration)
 
-**JWT Token Generation and Validation Service**
+**JWT Token Generation Service for FastAPI-Users**
 ```python
 # services/mcp_auth.py
-import jwt
-from datetime import datetime, timedelta, UTC
 from typing import Dict, Any, Optional
+from fastapi import Depends
+from models.user import User
+from auth.users import current_active_user
+from services.mcp_rsa_keys import get_mcp_rsa_manager
 from config import settings
-from utils.rsa_keys import get_rsa_key_manager
 from utils.logging import get_logger
 
 logger = get_logger(__name__)
 
 class MCPAuthService:
     """
-    MCP-specific JWT authentication service.
+    MCP-specific JWT authentication service integrated with FastAPI-Users.
     
-    Handles JWT token generation and validation for MCP endpoints
-    using RSA key pairs, separate from the main application's API key authentication.
+    Generates RSA-signed JWT tokens for MCP access from authenticated FastAPI-Users.
+    Bridges the HMAC-based FastAPI-Users authentication with RSA-based MCP requirements.
     """
     
     def __init__(self):
-        self.key_manager = get_rsa_key_manager()
-        self.algorithm = settings.MCP_JWT_ALGORITHM
-        self.issuer = settings.MCP_JWT_ISSUER
+        self.rsa_manager = get_mcp_rsa_manager()
         self.audience = settings.MCP_JWT_AUDIENCE
+        self.issuer = settings.MCP_JWT_ISSUER
         self.expire_minutes = settings.MCP_JWT_EXPIRE_MINUTES
-        
-        # Initialize keys
-        self._ensure_keys_available()
     
-    def _ensure_keys_available(self) -> None:
-        """Ensure RSA keys are available for JWT operations."""
-        try:
-            # Load from environment if provided
-            if settings.MCP_JWT_PRIVATE_KEY and settings.MCP_JWT_PUBLIC_KEY:
-                self.key_manager.load_keys_from_env(
-                    settings.MCP_JWT_PRIVATE_KEY,
-                    settings.MCP_JWT_PUBLIC_KEY
-                )
-                logger.info("MCP JWT keys loaded from environment")
-                return
-            
-            # Auto-generate in development
-            if settings.MCP_JWT_AUTO_GENERATE_KEYS:
-                private_key, public_key = self.key_manager.generate_key_pair()
-                self.key_manager.private_key = private_key
-                self.key_manager.public_key = public_key
-                logger.warning(
-                    "Auto-generated MCP JWT keys for development. "
-                    "Use explicit keys in production!"
-                )
-                return
-            
-            raise ValueError("No MCP JWT keys available and auto-generation disabled")
-            
-        except Exception as e:
-            logger.error(f"Failed to initialize MCP JWT keys: {e}")
-            raise
-    
-    def generate_mcp_token(self, api_key: str, user_context: Optional[Dict[str, Any]] = None) -> str:
+    def generate_mcp_token_for_user(self, user: User) -> str:
         """
-        Generate RSA-signed JWT token for MCP access.
+        Generate RSA-signed JWT token for MCP access from authenticated FastAPI-Users user.
         
         Args:
-            api_key: The validated API key from main application
-            user_context: Optional user context information
+            user: Authenticated FastAPI-Users User instance
         
         Returns:
             str: JWT token for MCP authentication
@@ -295,82 +261,56 @@ class MCPAuthService:
             Exception: If token generation fails
         """
         try:
-            now = datetime.now(UTC)
-            
-            # Create JWT payload
-            payload = {
-                "sub": f"api-key:{api_key[:8]}...",  # Subject (masked API key)
-                "iat": now,  # Issued at
-                "exp": now + timedelta(minutes=self.expire_minutes),  # Expiration
-                "aud": self.audience,  # Audience
-                "iss": self.issuer,  # Issuer
-                "scope": "mcp-access",  # Token scope
-                "api_key_hash": self._hash_api_key(api_key),  # API key verification
-            }
-            
-            # Add user context if provided
-            if user_context:
-                payload["user_context"] = user_context
-            
-            # Sign with RSA private key
-            token = jwt.encode(
-                payload,
-                self.key_manager.private_key,
-                algorithm=self.algorithm
+            # Use FastMCP's built-in token creation with user details
+            token = self.rsa_manager.create_token(
+                user_id=str(user.id),
+                email=user.email
             )
             
-            logger.info(f"Generated MCP token for API key {api_key[:8]}...")
+            logger.info(f"Generated MCP token for user: {user.email} (ID: {user.id})")
             return token
             
         except Exception as e:
-            logger.error(f"Failed to generate MCP token: {e}")
+            logger.error(f"Failed to generate MCP token for user {user.email}: {e}")
             raise
     
-    def verify_mcp_token(self, token: str) -> Dict[str, Any]:
+    def generate_mcp_token_for_legacy_api_key(self, api_key: str) -> str:
         """
-        Verify RSA-signed JWT token for MCP access.
+        Generate RSA-signed JWT token for legacy API key users.
         
         Args:
-            token: JWT token to verify
+            api_key: Validated legacy API key
         
         Returns:
-            Dict[str, Any]: Decoded token payload
-        
+            str: JWT token for MCP authentication
+            
         Raises:
-            jwt.InvalidTokenError: If token is invalid
-            jwt.ExpiredSignatureError: If token is expired
+            Exception: If token generation fails
         """
         try:
-            # Decode and verify JWT token
-            payload = jwt.decode(
-                token,
-                self.key_manager.public_key,
-                algorithms=[self.algorithm],
+            # For legacy API key users, create token with limited context
+            key_pair = self.rsa_manager.get_or_create_key_pair()
+            
+            token = key_pair.create_token(
                 audience=self.audience,
+                subject=f"legacy-api-key:{self._hash_api_key(api_key)}",
                 issuer=self.issuer,
-                options={
-                    "verify_signature": True,
-                    "verify_exp": True,
-                    "verify_aud": True,
-                    "verify_iss": True,
-                }
+                additional_claims={
+                    "scope": "mcp-access",
+                    "auth_type": "legacy-api-key"
+                },
+                expires_in_minutes=self.expire_minutes
             )
             
-            logger.info(f"Verified MCP token for subject: {payload.get('sub')}")
-            return payload
+            logger.info(f"Generated MCP token for legacy API key: {api_key[:8]}...")
+            return token
             
-        except jwt.ExpiredSignatureError:
-            logger.warning("MCP token expired")
-            raise
-        except jwt.InvalidTokenError as e:
-            logger.warning(f"Invalid MCP token: {e}")
-            raise
         except Exception as e:
-            logger.error(f"Failed to verify MCP token: {e}")
+            logger.error(f"Failed to generate MCP token for API key: {e}")
             raise
     
     def _hash_api_key(self, api_key: str) -> str:
-        """Create a hash of the API key for token validation."""
+        """Create a hash of the API key for token identification."""
         import hashlib
         return hashlib.sha256(api_key.encode()).hexdigest()[:16]
 
@@ -385,17 +325,19 @@ def get_mcp_auth_service() -> MCPAuthService:
     return _mcp_auth_service
 ```
 
-#### 4. MCP Token Generation Endpoint
+#### 4. MCP Token Generation Endpoint (FastAPI-Users Integration)
 
-**API Endpoint for MCP Token Issuance**
+**API Endpoint for MCP Token Issuance with Dual Authentication Support**
 ```python
 # routers/mcp_auth.py
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, Union
 from datetime import datetime, UTC
 
-from dependencies import RequiredAuth
+from models.user import User
+from auth.users import current_active_user
+from dependencies import RequiredAuth, OptionalAuth
 from services.mcp_auth import get_mcp_auth_service
 from utils.logging import get_logger
 
@@ -405,10 +347,7 @@ router = APIRouter(prefix="/auth", tags=["mcp-authentication"])
 
 class MCPTokenRequest(BaseModel):
     """Request model for MCP token generation."""
-    user_context: Optional[Dict[str, Any]] = Field(
-        default=None,
-        description="Optional user context information"
-    )
+    pass  # No additional parameters needed - user info comes from authentication
 
 class MCPTokenResponse(BaseModel):
     """Response model for MCP token generation."""
@@ -417,23 +356,23 @@ class MCPTokenResponse(BaseModel):
     expires_in: int = Field(..., description="Token expiration in seconds")
     scope: str = Field(default="mcp-access", description="Token scope")
     issued_at: str = Field(..., description="Token issuance timestamp")
+    user_info: Dict[str, Any] = Field(..., description="User information")
 
 @router.post("/mcp-token", response_model=MCPTokenResponse)
 async def generate_mcp_token(
     request: MCPTokenRequest,
-    api_key: str = RequiredAuth,
+    current_user: User = Depends(current_active_user),
     mcp_auth_service = Depends(get_mcp_auth_service),
 ) -> MCPTokenResponse:
     """
-    Generate MCP-specific JWT token for authenticated API key holders.
+    Generate MCP-specific JWT token for authenticated FastAPI-Users.
     
-    This endpoint allows users with valid API keys to obtain JWT tokens
-    specifically for accessing MCP endpoints. The token is signed with
-    RSA keys and includes proper audience and issuer claims.
+    This endpoint allows authenticated users to obtain RSA-signed JWT tokens
+    specifically for accessing MCP endpoints. Requires valid FastAPI-Users authentication.
     
     Args:
-        request: Token generation request with optional user context
-        api_key: Validated API key from RequiredAuth dependency
+        request: Token generation request (currently no parameters needed)
+        current_user: Authenticated FastAPI-Users User instance
         mcp_auth_service: MCP authentication service
     
     Returns:
@@ -443,11 +382,8 @@ async def generate_mcp_token(
         HTTPException: If token generation fails
     """
     try:
-        # Generate MCP token using validated API key
-        mcp_token = mcp_auth_service.generate_mcp_token(
-            api_key=api_key,
-            user_context=request.user_context
-        )
+        # Generate MCP token for authenticated FastAPI-Users user
+        mcp_token = mcp_auth_service.generate_mcp_token_for_user(current_user)
         
         return MCPTokenResponse(
             mcp_token=mcp_token,
@@ -455,60 +391,77 @@ async def generate_mcp_token(
             expires_in=mcp_auth_service.expire_minutes * 60,
             scope="mcp-access",
             issued_at=datetime.now(UTC).isoformat(),
+            user_info={
+                "user_id": str(current_user.id),
+                "email": current_user.email,
+                "full_name": current_user.full_name,
+                "role": current_user.role,
+            },
         )
         
     except Exception as e:
-        logger.error(f"Failed to generate MCP token: {e}")
+        logger.error(f"Failed to generate MCP token for user {current_user.email}: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to generate MCP token: {str(e)}"
         )
 
-@router.get("/mcp-token/verify")
-async def verify_mcp_token(
-    token: str,
+@router.post("/mcp-token/legacy", response_model=MCPTokenResponse)
+async def generate_mcp_token_legacy(
+    request: MCPTokenRequest,
+    api_key: str = RequiredAuth,
     mcp_auth_service = Depends(get_mcp_auth_service),
-) -> Dict[str, Any]:
+) -> MCPTokenResponse:
     """
-    Verify MCP JWT token and return payload information.
+    Generate MCP-specific JWT token for legacy API key authentication.
     
-    This endpoint is primarily for debugging and testing purposes.
+    This endpoint maintains backward compatibility for users still using
+    X-API-KEY authentication instead of FastAPI-Users.
     
     Args:
-        token: JWT token to verify
+        request: Token generation request
+        api_key: Validated legacy API key
         mcp_auth_service: MCP authentication service
     
     Returns:
-        Dict[str, Any]: Token payload if valid
+        MCPTokenResponse: JWT token and metadata
     
     Raises:
-        HTTPException: If token is invalid
+        HTTPException: If token generation fails
     """
     try:
-        payload = mcp_auth_service.verify_mcp_token(token)
-        return {
-            "valid": True,
-            "payload": payload,
-            "message": "Token is valid"
-        }
+        # Generate MCP token for legacy API key
+        mcp_token = mcp_auth_service.generate_mcp_token_for_legacy_api_key(api_key)
+        
+        return MCPTokenResponse(
+            mcp_token=mcp_token,
+            token_type="bearer",
+            expires_in=mcp_auth_service.expire_minutes * 60,
+            scope="mcp-access",
+            issued_at=datetime.now(UTC).isoformat(),
+            user_info={
+                "auth_type": "legacy-api-key",
+                "api_key_prefix": api_key[:8] + "...",
+            },
+        )
         
     except Exception as e:
-        logger.warning(f"Token verification failed: {e}")
+        logger.error(f"Failed to generate MCP token for API key: {e}")
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=f"Invalid token: {str(e)}"
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to generate MCP token: {str(e)}"
         )
 ```
 
-#### 5. Updated MCP Server with Authentication
+#### 5. Updated MCP Server with Authentication (Simplified FastMCP Integration)
 
-**FastMCP Server with BearerAuthProvider Integration**
+**FastMCP Server with BearerAuthProvider using Built-in RSA Management**
 ```python
 # mcp_integration/server.py
 from fastmcp import FastMCP
-from fastmcp.server.auth import BearerAuthProvider
+from fastmcp.server.auth.providers.bearer import BearerAuthProvider
 from config import settings
-from services.mcp_auth import get_mcp_auth_service
+from services.mcp_rsa_keys import get_mcp_rsa_manager
 from utils.logging import get_logger
 from .tools.geocoding import geocode_city
 
@@ -527,12 +480,13 @@ def get_mcp_server() -> FastMCP:
     global _mcp_server
     if _mcp_server is None:
         try:
-            # Initialize authentication service to ensure keys are ready
-            auth_service = get_mcp_auth_service()
+            # Initialize RSA key manager to ensure keys are ready
+            rsa_manager = get_mcp_rsa_manager()
+            key_pair = rsa_manager.get_or_create_key_pair()
             
-            # Create Bearer authentication provider with RSA public key
+            # Create Bearer authentication provider with FastMCP RSA key pair
             auth_provider = BearerAuthProvider(
-                public_key=auth_service.key_manager.public_key,
+                public_key=key_pair.public_key,  # FastMCP RSAKeyPair.public_key
                 algorithm=settings.MCP_JWT_ALGORITHM,
                 audience=settings.MCP_JWT_AUDIENCE,
                 issuer=settings.MCP_JWT_ISSUER,
@@ -547,8 +501,8 @@ def get_mcp_server() -> FastMCP:
                 Authentication: JWT Bearer tokens required for all operations.
                 
                 To obtain a token:
-                1. Authenticate with the main API using X-API-KEY header
-                2. Request MCP token from /auth/mcp-token endpoint
+                1. Authenticate with FastAPI-Users (POST /auth/jwt/login) OR use legacy X-API-KEY
+                2. Request MCP token from /auth/mcp-token endpoint (FastAPI-Users) or /auth/mcp-token/legacy (API key)
                 3. Use the returned JWT token in Authorization: Bearer <token> header
                 
                 Available tools:
@@ -565,11 +519,16 @@ def get_mcp_server() -> FastMCP:
             logger.error(f"Failed to initialize MCP server with authentication: {e}")
             # Fallback to unauthenticated server in development
             if settings.ENV == "development":
-                logger.warning("Falling back to unauthenticated MCP server")
+                logger.warning("Falling back to unauthenticated MCP server for development")
                 _mcp_server = FastMCP(
-                    name="Personal MCP Server (Unauthenticated)",
+                    name="Personal MCP Server (Development - No Auth)",
                     instructions="""
-                    This server is running without authentication (development mode).
+                    This server is running without authentication (development mode only).
+                    
+                    In production, authentication is required:
+                    1. Authenticate with FastAPI-Users or legacy API key
+                    2. Obtain MCP JWT token
+                    3. Use Bearer token for MCP access
                     
                     Available tools:
                     - geocode_city: Convert city names to latitude/longitude coordinates
@@ -628,72 +587,115 @@ MCP_JWT_AUDIENCE=mcp-server
 MCP_JWT_AUTO_GENERATE_KEYS=true  # Auto-generate keys in development
 ```
 
-### Implementation Tasks (Execution Order)
+### Implementation Tasks (Updated for FastAPI-Users Integration)
 
-1. **RSA Key Infrastructure** ⏱️ 2 days
-   - Create `utils/rsa_keys.py` with RSAKeyManager class
-   - Implement key generation, loading, and validation 
+1. **MCP RSA Key Management Service** ⏱️ 1 day
+   - Create `services/mcp_rsa_keys.py` using FastMCP's RSAKeyPair
+   - Implement key loading from environment variables
+   - Add auto-generation fallback for development
+   - Test key pair creation and token generation
+
+2. **Configuration Extensions** ⏱️ 1 day  
+   - Update `config.py` to extend existing JWT settings for MCP
+   - Add MCP-specific settings with fallbacks to main JWT config
+   - Update model validator to handle dual JWT systems
+   - Test configuration inheritance and validation
+
+3. **MCP Authentication Service** ⏱️ 2 days
+   - Create `services/mcp_auth.py` with FastAPI-Users integration
+   - Implement token generation for authenticated User objects
+   - Implement legacy API key support for backward compatibility
    - Add comprehensive error handling and logging
-   - Test key generation and PEM format validation
+   - Test both FastAPI-Users and legacy authentication paths
 
-2. **Configuration Updates** ⏱️ 1 day
-   - Update `config.py` with MCP JWT settings
-   - Add model validator for production key requirements
-   - Update `.env.example` with RSA key placeholders
-   - Test configuration loading and validation
+4. **MCP Token Generation Endpoints** ⏱️ 2 days
+   - Create `routers/mcp_auth.py` with dual authentication support
+   - Implement `/auth/mcp-token` for FastAPI-Users (primary)
+   - Implement `/auth/mcp-token/legacy` for API key users (backward compatibility)
+   - Add proper Pydantic models and error handling
+   - Test both authentication endpoints and error scenarios
 
-3. **MCP Authentication Service** ⏱️ 3 days
-   - Create `services/mcp_auth.py` with MCPAuthService class
-   - Implement JWT token generation with RSA signing
-   - Implement JWT token verification with audience/issuer validation
-   - Add singleton pattern and dependency injection support
-   - Test token generation, verification, and error handling
-
-4. **MCP Token API Endpoint** ⏱️ 2 days
-   - Create `routers/mcp_auth.py` with token generation endpoint
-   - Implement Pydantic models for request/response
-   - Add proper error handling and logging
-   - Integrate with existing RequiredAuth dependency
-   - Test endpoint functionality and error scenarios
-
-5. **MCP Server Authentication Integration** ⏱️ 2 days
-   - Update `mcp_integration/server.py` to use BearerAuthProvider
-   - Configure FastMCP with RSA public key validation
-   - Add fallback mechanism for development environment
-   - Update server instructions with authentication guidance
-   - Test MCP server initialization and tool access
+5. **MCP Server Authentication Integration** ⏱️ 1 day
+   - Update `mcp_integration/server.py` to use FastMCP BearerAuthProvider
+   - Configure with RSA key pair from mcp_rsa_keys service
+   - Update server instructions for dual authentication flow
+   - Add development fallback with clear warnings
+   - Test MCP server initialization and Bearer token validation
 
 6. **Main Application Integration** ⏱️ 1 day
-   - Add MCP auth router to main.py
-   - Update CORS configuration if necessary
-   - Verify no conflicts with existing routes
-   - Test complete authentication flow
+   - Add MCP auth router to main.py (both endpoints)
+   - Verify no conflicts with existing FastAPI-Users routes
+   - Test complete authentication flows (FastAPI-Users and legacy)
+   - Verify CORS and middleware compatibility
 
-7. **Testing Implementation** ⏱️ 3 days
-   - Create unit tests for RSA key management
-   - Create unit tests for MCP authentication service
-   - Create integration tests for token generation endpoint
-   - Create integration tests for MCP server authentication
-   - Update existing MCP tests to use Bearer tokens
-   - Test error scenarios and edge cases
+7. **Testing Implementation** ⏱️ 2 days
+   - Create unit tests for MCP RSA key service
+   - Create unit tests for MCP authentication service (both auth types)
+   - Create integration tests for token generation endpoints
+   - Update existing MCP tests to include Bearer authentication
+   - Test error scenarios, token expiration, and edge cases
 
-8. **Documentation and Deployment** ⏱️ 2 days
-   - Update CLAUDE.md with new authentication patterns
-   - Create user guide for MCP authentication flow
-   - Update API documentation with new endpoints
-   - Create deployment guide for production key management
-   - Update README.md with MCP authentication instructions
+8. **Documentation and Environment Setup** ⏱️ 1 day
+   - Update CLAUDE.md with FastAPI-Users + MCP authentication patterns
+   - Update `.env.example` with MCP RSA key examples
+   - Create user guide for both authentication flows
+   - Update API documentation with dual endpoint approach
 
-### User Experience Flow
+### User Experience Flow (FastAPI-Users + Legacy Support)
 
-#### 1. Token Generation Flow
+#### 1. FastAPI-Users Authentication Flow (Primary)
 ```bash
-# 1. Authenticate with main application (existing flow)
+# 1. User registration (if new user)
+curl -X POST "http://localhost:8000/auth/register" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "user@example.com",
+    "password": "password123",
+    "first_name": "John",
+    "last_name": "Doe"
+  }'
+
+# 2. User login to get FastAPI-Users JWT token
+curl -X POST "http://localhost:8000/auth/jwt/login" \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d 'username=user@example.com&password=password123'
+
+# Response:
+{
+  "access_token": "eyJhbGciOiJIUzI1NiIs...",  # HMAC token for main app
+  "token_type": "bearer"
+}
+
+# 3. Request MCP-specific RSA token using FastAPI-Users authentication
+curl -X POST "http://localhost:8000/auth/mcp-token" \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIs..." \
+  -H "Content-Type: application/json" \
+  -d '{}'
+
+# Response:
+{
+  "mcp_token": "eyJhbGciOiJSUzI1NiIs...",  # RSA token for MCP
+  "token_type": "bearer",
+  "expires_in": 3600,
+  "scope": "mcp-access",
+  "issued_at": "2024-01-01T12:00:00+00:00",
+  "user_info": {
+    "user_id": "12345-67890-abcdef",
+    "email": "user@example.com",
+    "full_name": "John Doe",
+    "role": "user"
+  }
+}
+```
+
+#### 2. Legacy API Key Flow (Backward Compatibility)
+```bash
+# 1. Use existing X-API-KEY authentication
 curl -X GET "http://localhost:8000/protected" \
   -H "X-API-KEY: your-api-key-here"
 
-# 2. Request MCP-specific token
-curl -X POST "http://localhost:8000/auth/mcp-token" \
+# 2. Request MCP-specific token using legacy endpoint
+curl -X POST "http://localhost:8000/auth/mcp-token/legacy" \
   -H "X-API-KEY: your-api-key-here" \
   -H "Content-Type: application/json" \
   -d '{}'
@@ -704,7 +706,11 @@ curl -X POST "http://localhost:8000/auth/mcp-token" \
   "token_type": "bearer",
   "expires_in": 3600,
   "scope": "mcp-access",
-  "issued_at": "2024-01-01T12:00:00+00:00"
+  "issued_at": "2024-01-01T12:00:00+00:00",
+  "user_info": {
+    "auth_type": "legacy-api-key",
+    "api_key_prefix": "your-api-..."
+  }
 }
 ```
 
@@ -752,54 +758,80 @@ if __name__ == "__main__":
     main()
 ```
 
-### Validation Gates
+### Validation Gates (Updated for Current Codebase)
 
 #### Code Quality and Standards
 ```bash
-# Syntax and formatting
-uv run ruff check --fix .
-uv run ruff format .
+# Syntax and formatting (using current project standards)
+uv run ruff check --fix
+uv run ruff format
 
-# Type checking (if mypy is configured)
-uv run mypy services/mcp_auth.py utils/rsa_keys.py
+# All quality checks (using project Makefile)
+make quality
+
+# Fix formatting and linting
+make fix
 ```
 
-#### Unit Testing
+#### Unit Testing (Current Test Structure)
 ```bash
-# RSA key management tests
-uv run pytest utils/tests/test_rsa_keys.py -v
+# MCP RSA key service tests
+uv run pytest services/tests/test_mcp_rsa_keys.py -v
 
 # MCP authentication service tests  
 uv run pytest services/tests/test_mcp_auth.py -v
 
-# MCP authentication endpoint tests
+# MCP authentication router tests
 uv run pytest routers/tests/test_mcp_auth.py -v
+
+# Run all unit tests
+make test
 ```
 
-#### Integration Testing
+#### Integration Testing (Following Current Patterns)
 ```bash
-# MCP server authentication integration
+# Updated MCP integration tests (with authentication)
+uv run pytest mcp_integration/tests/test_mcp_geocoding.py -v
+
+# New MCP authentication integration tests
 uv run pytest mcp_integration/tests/test_mcp_auth_integration.py -v
 
-# Complete authentication flow testing
-uv run pytest tests/test_mcp_authentication_flow.py -v
+# Updated integration tests
+uv run pytest tests/test_integration.py -v
 
-# All tests
-uv run pytest --cov=. -v
+# All tests with coverage
+make test-cov
 ```
 
-#### Manual Testing Commands
+#### Manual Testing Commands (FastAPI-Users + Legacy)
 ```bash
-# 1. Test key generation
-python utils/generate_dev_keys.py
+# 1. Start development server
+make run
 
-# 2. Test MCP token generation
+# 2. Test FastAPI-Users authentication flow
+# Register new user
+curl -X POST "http://localhost:8000/auth/register" \
+  -H "Content-Type: application/json" \
+  -d '{"email":"test@example.com","password":"password123","first_name":"Test","last_name":"User"}'
+
+# Login to get HMAC JWT token
+curl -X POST "http://localhost:8000/auth/jwt/login" \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d 'username=test@example.com&password=password123'
+
+# Get MCP RSA token using FastAPI-Users authentication
 curl -X POST "http://localhost:8000/auth/mcp-token" \
+  -H "Authorization: Bearer YOUR_FASTAPI_USERS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{}'
+
+# 3. Test legacy API key flow
+curl -X POST "http://localhost:8000/auth/mcp-token/legacy" \
   -H "X-API-KEY: your-api-key" \
   -H "Content-Type: application/json" \
   -d '{}'
 
-# 3. Test MCP tool access with Bearer token
+# 4. Test MCP tool access with Bearer token
 python -c "
 import asyncio
 from fastmcp import Client
@@ -808,7 +840,7 @@ from fastmcp.client.auth import BearerAuth
 async def test_mcp_auth():
     client = Client(
         'http://localhost:8000/mcp-server/mcp',
-        auth=BearerAuth('YOUR_JWT_TOKEN_HERE')
+        auth=BearerAuth('YOUR_MCP_RSA_TOKEN_HERE')
     )
     
     async with client:
@@ -823,8 +855,9 @@ async def test_mcp_auth():
 asyncio.run(test_mcp_auth())
 "
 
-# 4. Test token verification
-curl -X GET "http://localhost:8000/auth/mcp-token/verify?token=YOUR_JWT_TOKEN"
+# 5. Test health endpoints
+curl -X GET "http://localhost:8000/"
+curl -X GET "http://localhost:8000/geocode/health"
 ```
 
 ### Key Design Decisions
@@ -1009,13 +1042,20 @@ curl -X GET "http://localhost:8000/auth/mcp-token/verify?token=YOUR_JWT_TOKEN"
 3. Token generation endpoint → MCP server authentication
 4. MCP server authentication → Integration testing
 
-## PRP Confidence Score: 9/10
+## PRP Confidence Score: 9.5/10 (UPDATED)
 
-**High confidence** - This implementation follows well-established JWT and FastMCP patterns with comprehensive documentation. The existing codebase provides clear patterns, and all required dependencies are already available. The dual authentication approach maintains backward compatibility while adding proper MCP security.
+**Very high confidence** - This updated implementation leverages FastMCP's built-in RSA management and integrates seamlessly with the existing FastAPI-Users authentication system. The approach is simplified compared to the original PRP and aligns perfectly with current codebase patterns.
 
-**Risk factors preventing 10/10:**
-- RSA key management requires careful production setup
-- FastMCP integration testing needs validation
-- JWT token lifecycle management across dual authentication systems
+**Key Success Factors:**
+- ✅ **FastMCP Built-in RSA**: Uses FastMCP's RSAKeyPair instead of custom cryptography
+- ✅ **FastAPI-Users Integration**: Builds on existing authentication infrastructure
+- ✅ **Backward Compatibility**: Maintains legacy API key support
+- ✅ **Current Codebase Alignment**: All patterns match existing code structure
+- ✅ **Comprehensive Research**: Based on actual codebase analysis and validation
+- ✅ **Dependencies Available**: All required packages already in pyproject.toml
 
-**Likelihood of one-pass implementation success: 85%** - Well-documented patterns, existing codebase compatibility, detailed implementation steps, and comprehensive validation gates make this highly likely to succeed with minimal rework.
+**Minor Risk Factors:**
+- FastMCP RSAKeyPair.from_pem() method needs validation (may use different API)
+- Production RSA key configuration requires careful environment setup
+
+**Likelihood of one-pass implementation success: 95%** - Simplified approach using proven patterns, existing infrastructure, and well-documented FastMCP integration makes this extremely likely to succeed with minimal issues.

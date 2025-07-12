@@ -31,12 +31,35 @@ class Settings(BaseSettings):
         default="sqlite+aiosqlite:///./fastapi_users.db", description="Database URL"
     )
 
-    # For MCP (RSA keys for production)
+    # RSA keys (legacy fields - now used as fallback for MCP)
     JWT_PUBLIC_KEY: str | None = Field(
-        default=None, description="JWT public key for MCP"
+        default=None, description="JWT public key (legacy - fallback for MCP)"
     )
     JWT_PRIVATE_KEY: str | None = Field(
-        default=None, description="JWT private key for MCP"
+        default=None, description="JWT private key (legacy - fallback for MCP)"
+    )
+
+    # MCP-specific JWT Configuration (extends existing JWT settings)
+    MCP_JWT_PRIVATE_KEY: str | None = Field(
+        default=None,
+        description="RSA private key for MCP JWT signing (PEM format) - fallback to JWT_PRIVATE_KEY",
+    )
+    MCP_JWT_PUBLIC_KEY: str | None = Field(
+        default=None,
+        description="RSA public key for MCP JWT verification (PEM format) - fallback to JWT_PUBLIC_KEY",
+    )
+    MCP_JWT_ALGORITHM: str = Field(
+        default="RS256", description="RSA algorithm for MCP JWT tokens"
+    )
+    MCP_JWT_EXPIRE_MINUTES: int = Field(
+        default=60,
+        description="MCP JWT token expiration in minutes (inherits from JWT_EXPIRE_MINUTES)",
+    )
+    MCP_JWT_ISSUER: str = Field(
+        default="personal-server", description="JWT token issuer for MCP"
+    )
+    MCP_JWT_AUDIENCE: str = Field(
+        default="mcp-server", description="JWT token audience for MCP"
     )
 
     # Application configuration
@@ -104,7 +127,8 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_secrets(self):
-        """Validate secret requirements."""
+        """Validate secret requirements and configure MCP JWT settings."""
+        # Validate main JWT secret
         if not self.JWT_SECRET or len(self.JWT_SECRET.strip()) == 0:
             raise ValueError(
                 "JWT_SECRET environment variable is required and cannot be empty"
@@ -113,6 +137,28 @@ class Settings(BaseSettings):
             raise ValueError(
                 "JWT_SECRET must be at least 32 characters long for security"
             )
+
+        # Use fallback keys if MCP-specific keys not provided
+        if not self.MCP_JWT_PRIVATE_KEY and self.JWT_PRIVATE_KEY:
+            self.MCP_JWT_PRIVATE_KEY = self.JWT_PRIVATE_KEY
+
+        if not self.MCP_JWT_PUBLIC_KEY and self.JWT_PUBLIC_KEY:
+            self.MCP_JWT_PUBLIC_KEY = self.JWT_PUBLIC_KEY
+
+        # Inherit expiration from main JWT settings if not specified
+        if self.MCP_JWT_EXPIRE_MINUTES == 60 and self.JWT_EXPIRE_MINUTES != 60:
+            self.MCP_JWT_EXPIRE_MINUTES = self.JWT_EXPIRE_MINUTES
+
+        # In production, warn if using auto-generation
+        if self.ENV == "production" and (not self.MCP_JWT_PRIVATE_KEY or not self.MCP_JWT_PUBLIC_KEY):
+            import logging
+
+            logger = logging.getLogger(__name__)
+            logger.warning(
+                "MCP will auto-generate RSA keys. "
+                "Set MCP_JWT_PRIVATE_KEY and MCP_JWT_PUBLIC_KEY for production."
+            )
+
         return self
 
 
