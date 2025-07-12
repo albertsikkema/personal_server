@@ -16,6 +16,8 @@ dependencies = [
     "slowapi",
     "httpx",
     "fastmcp",
+    # SECURITY FAULT: Intentionally vulnerable package for testing pip-audit
+    "jinja2==2.10.1",  # Known CVE-2019-10906: Jinja2 sandbox escape vulnerability
 ]
 
 [dependency-groups]

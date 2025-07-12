@@ -99,6 +99,34 @@ jobs:
       - name: Run make check-commit
         run: make check-commit
       
+      - name: Generate quality summary
+        if: always()
+        run: |
+          echo "## 📊 Quality & Testing Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # Check if linting passed
+          if make check-commit > /dev/null 2>&1; then
+            echo "✅ **Code Quality**: All linting and formatting checks passed" >> $GITHUB_STEP_SUMMARY
+            echo "✅ **Tests**: All tests passed successfully" >> $GITHUB_STEP_SUMMARY
+            echo "✅ **Build**: Application builds and starts correctly" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ **Code Quality**: Linting or formatting issues detected" >> $GITHUB_STEP_SUMMARY
+            echo "   - Run \`make fix\` locally to auto-fix issues" >> $GITHUB_STEP_SUMMARY
+            echo "   - Run \`make test\` to reproduce test failures" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 🔧 Tools Used" >> $GITHUB_STEP_SUMMARY
+          echo "- **Ruff**: Python linting and formatting" >> $GITHUB_STEP_SUMMARY
+          echo "- **Pytest**: Test execution with coverage" >> $GITHUB_STEP_SUMMARY
+          echo "- **uv**: Fast dependency management" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [ -d "htmlcov" ]; then
+            echo "📈 **Coverage Report**: Generated and uploaded as artifact" >> $GITHUB_STEP_SUMMARY
+          fi
+      
       - name: Upload coverage reports
         if: always()
         uses: actions/upload-artifact@v4

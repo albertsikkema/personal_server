@@ -114,17 +114,11 @@ async def health_check():
     Returns:
         A dictionary with health status information
     """
-    # SECURITY FAULT: This is intentionally vulnerable code for testing bandit
-    # DO NOT USE eval() in production - it can execute arbitrary code
-    test_expression = "1 + 1"
-    result = eval(test_expression)  # This will trigger bandit B307 and FAIL the build
-    
     return {
         "status": "healthy",
         "timestamp": datetime.now(UTC).isoformat(),
         "service": "FastAPI Application",
         "version": "1.0.0",
-        "test_result": result,
     }
 
 
