@@ -1,3 +1,7 @@
-headers {
-  X-API-KEY: {{X-API-KEY}}
+auth {
+  mode: bearer
+}
+
+auth:bearer {
+  token: {{process.env.TOKEN}}
 }

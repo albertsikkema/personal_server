@@ -183,63 +183,173 @@ $ fastapi run main.py --port 80
 
 ### Authentication System
 
-This project implements **FastAPI's official security system** using dependency injection:
+This project implements **FastAPI-Users with JWT Bearer token authentication** for modern, scalable user management:
 
-#### Core Security Components
+#### Core Components
+
+**User Model (models/user.py)**
 ```python
-# dependencies.py
-from fastapi.security import APIKeyHeader
-from fastapi import Security, Depends
+from fastapi_users.db import SQLAlchemyBaseUserTableUUID
+from sqlalchemy import Column, String, DateTime
 
-api_key_header = APIKeyHeader(
-    name="X-API-KEY", 
-    auto_error=False,
-    description="API key for authentication"
+class User(SQLAlchemyBaseUserTableUUID, Base):
+    __tablename__ = "users"
+    
+    # Additional fields beyond FastAPI-Users base
+    first_name = Column(String(50), nullable=True)
+    last_name = Column(String(50), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    last_login = Column(DateTime, nullable=True)
+    role = Column(String(20), default="user")  # user, admin, premium
+```
+
+**JWT Authentication Backend (auth/backend.py)**
+```python
+from fastapi_users.authentication import AuthenticationBackend, BearerTransport, JWTStrategy
+
+def get_jwt_strategy() -> JWTStrategy:
+    return JWTStrategy(
+        secret=settings.JWT_SECRET,
+        lifetime_seconds=settings.JWT_EXPIRE_MINUTES * 60,
+        algorithm=settings.JWT_ALGORITHM,
+    )
+
+bearer_transport = BearerTransport(tokenUrl="auth/jwt/login")
+
+auth_backend = AuthenticationBackend(
+    name="jwt",
+    transport=bearer_transport,
+    get_strategy=get_jwt_strategy,
+)
+```
+
+**User Dependencies (auth/users.py)**
+```python
+from fastapi_users import FastAPIUsers
+
+fastapi_users = FastAPIUsers[User, uuid.UUID](get_user_manager, [auth_backend])
+
+# User dependencies for protecting routes
+current_active_user = fastapi_users.current_user(active=True)
+current_verified_user = fastapi_users.current_user(active=True, verified=True)
+current_superuser = fastapi_users.current_user(active=True, verified=True, superuser=True)
+```
+
+#### Authentication Routes
+
+The application includes these authentication endpoints:
+
+```python
+# Authentication routes (main.py)
+app.include_router(
+    fastapi_users.get_auth_router(auth_backend), 
+    prefix="/auth/jwt", 
+    tags=["auth"]
 )
 
-async def verify_api_key(api_key: Annotated[str, Security(api_key_header)]) -> str:
-    # Authentication logic with custom error responses
-    
-RequiredAuth = Depends(verify_api_key)  # Helper alias
-OptionalAuth = Depends(optional_api_key)  # Optional auth
+app.include_router(
+    fastapi_users.get_register_router(UserRead, UserCreate),
+    prefix="/auth",
+    tags=["auth"]
+)
+
+app.include_router(
+    fastapi_users.get_users_router(UserRead, UserUpdate),
+    prefix="/users",
+    tags=["users"]
+)
 ```
 
-#### Usage in Endpoints
+#### Available Endpoints
+
+**User Registration**
+```bash
+POST /auth/register
+Content-Type: application/json
+
+{
+  "email": "user@example.com",
+  "password": "password123",
+  "first_name": "John",
+  "last_name": "Doe"
+}
+```
+
+**User Login**
+```bash
+POST /auth/jwt/login
+Content-Type: application/x-www-form-urlencoded
+
+username=user@example.com&password=password123
+
+# Response:
+{
+  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "token_type": "bearer"
+}
+```
+
+**Protected Endpoint Usage**
 ```python
-# Protected endpoint - requires authentication
 @app.get("/protected")
-async def protected_endpoint(_api_key: str = RequiredAuth):
-    return {"message": "Authenticated"}
-
-# Public endpoint - no authentication
-@app.get("/public")
-async def public_endpoint():
-    return {"message": "Public"}
-
-# Optional authentication
-@app.get("/optional")
-async def optional_endpoint(api_key: Optional[str] = OptionalAuth):
-    return {"authenticated": bool(api_key)}
-```
-
-#### Error Response Format
-```python
-# Custom exception for consistent error responses
-class AuthHTTPException(HTTPException):
-    def __init__(self, status_code: int, message: str):
-        self.response_content = {
-            "detail": message,
-            "request_id": str(uuid.uuid4()),
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+async def protected_endpoint(user: User = Depends(current_active_user)):
+    return {
+        "message": "Access granted",
+        "user": {
+            "id": str(user.id),
+            "email": user.email,
+            "full_name": user.full_name,
+            "role": user.role,
         }
-        super().__init__(status_code=status_code, detail=self.response_content)
+    }
 ```
 
-#### OpenAPI Integration
-- Automatic security scheme documentation
-- Swagger UI "Authorize" button 
-- Security requirements per endpoint
-- Type-safe authentication
+**API Request with Bearer Token**
+```bash
+curl -X GET "http://localhost:8000/protected" \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+```
+
+#### Configuration
+
+**Environment Variables (.env)**
+```bash
+# JWT Authentication (required)
+JWT_SECRET=your-secure-secret-key-minimum-32-characters
+JWT_ALGORITHM=HS256
+JWT_EXPIRE_MINUTES=60
+JWT_ISSUER=fastapi-app
+JWT_AUDIENCE=fastapi-users
+
+# Database
+DATABASE_URL=sqlite+aiosqlite:///./fastapi_users.db
+
+# Legacy API Key (optional, for backward compatibility)
+API_KEY=your-legacy-api-key
+```
+
+#### Database Migration
+
+```bash
+# Initialize Alembic (already done)
+uv run alembic init alembic
+
+# Create migration for users table
+uv run alembic revision --autogenerate -m "Add users table"
+
+# Apply migration
+uv run alembic upgrade head
+```
+
+#### Security Features
+
+- **JWT Bearer Tokens**: Industry standard OAuth2 Bearer token authentication
+- **User Management**: Registration, login, password reset, email verification
+- **Role-Based Access**: Foundation for multi-user features with role support
+- **Token Expiration**: Configurable JWT lifetime with refresh capability
+- **Password Hashing**: Secure bcrypt password hashing
+- **Type Safety**: Full type hints and validation with Pydantic
+- **OpenAPI Integration**: Automatic documentation with security schemas
 
 ## 📍 Geocoding API
 
@@ -249,8 +359,9 @@ The application now includes a comprehensive geocoding API that converts city na
 - **Rate Limiting**: Complies with Nominatim's 1 request/second policy
 - **Caching**: 24-hour TTL to minimize API calls
 - **User Rate Limiting**: 10 requests/minute per IP
-- **Authentication**: Requires API key for all endpoints
+- **Authentication**: Requires JWT Bearer token for all endpoints
 - **Error Handling**: Comprehensive error responses with proper status codes
+- **User Tracking**: All requests logged with user email for auditing
 
 ### Endpoints
 
@@ -1305,10 +1416,15 @@ class TestMCPGeocodingTool:
 # pyproject.toml
 dependencies = [
     "fastapi[standard]",
+    "fastapi-users[sqlalchemy]",  # JWT authentication and user management
+    "sqlalchemy",                  # Async ORM for database operations
+    "alembic",                    # Database migrations
+    "aiosqlite",                  # Async SQLite driver for development
+    "python-multipart",           # Form data parsing for login endpoint
     "pydantic",
     "pydantic-settings",
     "uvicorn",
-    "fastmcp",  # Added for MCP integration
+    "fastmcp",                    # MCP integration
 ]
 ```
 
@@ -1586,3 +1702,206 @@ The project successfully migrated from pip to uv for:
 2. Consistent environments across development and production
 3. Better dependency resolution and conflict detection
 4. Improved developer experience with faster local development
+
+## 📋 IMPORTANT TYPES & PATTERNS
+
+### Authentication and User Management
+
+#### User Model Pattern
+```python
+# models/user.py
+from fastapi_users.db import SQLAlchemyBaseUserTableUUID
+from sqlalchemy import Column, String, DateTime
+
+class User(SQLAlchemyBaseUserTableUUID, Base):
+    __tablename__ = "users"
+    
+    # Additional fields beyond FastAPI-Users base
+    first_name = Column(String(50), nullable=True)
+    last_name = Column(String(50), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    last_login = Column(DateTime, nullable=True)
+    role = Column(String(20), default="user")  # user, admin, premium
+    
+    @property
+    def full_name(self) -> Optional[str]:
+        """Get user's full name if available."""
+        if self.first_name and self.last_name:
+            return f"{self.first_name} {self.last_name}"
+        return self.first_name or self.last_name
+```
+
+#### User Schemas Pattern
+```python
+# schemas/user.py
+from fastapi_users import schemas
+
+class UserRead(schemas.BaseUser[uuid.UUID]):
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    role: str = "user"
+    created_at: datetime
+    last_login: Optional[datetime] = None
+
+class UserCreate(schemas.BaseUserCreate):
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    email: EmailStr
+    password: str = Field(..., min_length=8)
+
+class UserUpdate(schemas.BaseUserUpdate):
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    password: Optional[str] = Field(None, min_length=8)
+```
+
+#### Protected Endpoint Pattern
+```python
+# routers/example.py
+from auth.users import current_active_user
+from models.user import User
+
+@router.get("/protected-endpoint")
+async def protected_endpoint(
+    request: Request,
+    user: User = Depends(current_active_user),  # JWT Bearer token authentication
+):
+    """Protected endpoint requiring JWT Bearer token."""
+    logger.info(f"Request from user: {user.email} (ID: {user.id})")
+    
+    return {
+        "message": "Access granted",
+        "user_id": str(user.id),
+        "user_email": user.email,
+        "user_role": user.role,
+    }
+```
+
+#### Database Session Pattern
+```python
+# database.py
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from sqlalchemy.orm import sessionmaker
+
+engine = create_async_engine(settings.DATABASE_URL, echo=settings.DEBUG)
+async_session_maker = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+
+async def get_async_session() -> AsyncGenerator[AsyncSession, None]:
+    async with async_session_maker() as session:
+        try:
+            yield session
+        except Exception:
+            await session.rollback()
+            raise
+        finally:
+            await session.close()
+```
+
+#### User Manager Pattern
+```python
+# auth/user_manager.py
+from fastapi_users import BaseUserManager, UUIDIDMixin
+
+class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
+    reset_password_token_secret = settings.JWT_SECRET
+    verification_token_secret = settings.JWT_SECRET
+
+    async def on_after_register(self, user: User, request: Optional[Request] = None):
+        logger.info(f"User {user.id} has registered with email {user.email}")
+
+    async def on_after_login(self, user: User, request: Optional[Request] = None, response=None):
+        logger.info(f"User {user.id} logged in")
+
+async def get_user_manager(user_db: SQLAlchemyUserDatabase = Depends(get_user_db)):
+    yield UserManager(user_db)
+```
+
+### Configuration Management
+
+#### JWT Configuration Pattern
+```python
+# config.py
+class Settings(BaseSettings):
+    # JWT Authentication
+    JWT_SECRET: str = Field(..., min_length=32, description="JWT secret key")
+    JWT_ALGORITHM: str = Field(default="HS256", description="JWT algorithm")
+    JWT_EXPIRE_MINUTES: int = Field(default=60, description="JWT expiration in minutes")
+    JWT_ISSUER: str = Field(default="fastapi-app", description="JWT issuer")
+    JWT_AUDIENCE: str = Field(default="fastapi-users", description="JWT audience")
+    
+    # Database
+    DATABASE_URL: str = Field(
+        default="sqlite+aiosqlite:///./fastapi_users.db",
+        description="Database URL"
+    )
+    
+    @model_validator(mode="after")
+    def validate_secrets(self):
+        if not self.JWT_SECRET or len(self.JWT_SECRET) < 32:
+            raise ValueError("JWT_SECRET must be at least 32 characters long for security")
+        return self
+```
+
+### Common Usage Examples
+
+#### User Registration Flow
+```bash
+# 1. Register user
+curl -X POST "http://localhost:8000/auth/register" \
+  -H "Content-Type: application/json" \
+  -d '{"email": "user@example.com", "password": "password123", "first_name": "John", "last_name": "Doe"}'
+
+# 2. Login to get JWT token
+curl -X POST "http://localhost:8000/auth/jwt/login" \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "username=user@example.com&password=password123"
+
+# 3. Use JWT token for protected endpoints
+curl -X GET "http://localhost:8000/protected" \
+  -H "Authorization: Bearer <jwt-token>"
+```
+
+#### Database Migration Commands
+```bash
+# Create new migration
+uv run alembic revision --autogenerate -m "Description of changes"
+
+# Apply migrations
+uv run alembic upgrade head
+
+# Rollback migration
+uv run alembic downgrade -1
+
+# Show migration history
+uv run alembic history
+```
+
+### Migration Notes
+
+#### From API Key to JWT Bearer Tokens
+
+**Before (Legacy)**:
+```python
+# Old pattern
+@router.get("/endpoint")
+async def endpoint(_api_key: str = RequiredAuth):
+    return {"message": "authenticated"}
+```
+
+**After (Current)**:
+```python
+# New pattern
+@router.get("/endpoint")
+async def endpoint(user: User = Depends(current_active_user)):
+    return {
+        "message": "authenticated",
+        "user": {"id": str(user.id), "email": user.email}
+    }
+```
+
+**Key Differences**:
+- Authentication is now user-based instead of global API key
+- Better audit trail with user identification
+- Supports multiple users with different roles
+- JWT tokens have configurable expiration
+- Industry-standard OAuth2 Bearer token authentication

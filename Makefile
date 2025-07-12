@@ -13,6 +13,7 @@ help:
 	@echo "  dev       - Start FastAPI development server (alias for run)"
 	@echo "  test      - Run all tests"
 	@echo "  test-cov  - Run tests with coverage report"
+	@echo "  test-ci   - Run tests with separate database (CI simulation)"
 	@echo "  lint      - Run linter (ruff check)"
 	@echo "  format    - Format code with ruff"
 	@echo "  check     - Run linter and formatter check"
@@ -60,7 +61,7 @@ run:
 # Alias for run
 dev: run
 
-# Run tests
+# Run tests (automatically sets up test database)
 test:
 	uv run pytest
 
@@ -106,6 +107,10 @@ update:
 # Check code quality without making changes (CI-safe)
 check-commit: check test
 	@echo "Code quality check complete (no fixes applied)!"
+
+# Test with separate database (like CI) - now same as regular test
+test-ci: test
+	@echo "CI test simulation complete (uses same database setup as regular tests)!"
 
 # Security scanning
 security:

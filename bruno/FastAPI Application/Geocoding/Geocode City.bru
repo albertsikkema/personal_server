@@ -7,15 +7,11 @@ meta {
 get {
   url: {{baseUrl}}/geocode/city?city=Groningen
   body: none
-  auth: none
+  auth: inherit
 }
 
 params:query {
   city: Groningen
-}
-
-headers {
-  X-API-KEY: {{X-API-KEY}}
 }
 
 docs {

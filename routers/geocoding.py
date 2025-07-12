@@ -15,10 +15,11 @@ from datetime import UTC, datetime
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
+from auth.users import current_active_user
 from config import settings
-from dependencies import RequiredAuth
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from models.geocoding import GeocodingResponse
+from models.user import User
 from services.geocoding import GeocodingService
 from utils.logging import get_logger
 
@@ -31,7 +32,7 @@ limiter = Limiter(key_func=get_remote_address)
 router = APIRouter(
     prefix="/geocode",
     tags=["geocoding"],
-    dependencies=[RequiredAuth],  # Apply auth to all routes in this router
+    # Note: Authentication is now handled per-endpoint for better user tracking
 )
 
 # Initialize geocoding service (singleton pattern)
@@ -49,6 +50,7 @@ async def geocode_city(
         description="City name to geocode",
         examples=["London", "New York", "Tokyo", "São Paulo"],
     ),
+    user: User = Depends(current_active_user),  # JWT Bearer token authentication
 ):
     """
     Geocode a city name to geographic coordinates.
@@ -66,11 +68,12 @@ async def geocode_city(
     - Cache hits are indicated in the response
 
     **Authentication:**
-    - Requires valid API key in X-API-KEY header
+    - Requires valid JWT Bearer token in Authorization header
 
     Args:
         request: FastAPI request object (required for rate limiting)
         city: The name of the city to geocode (1-200 characters)
+        user: Authenticated user from JWT token
 
     Returns:
         GeocodingResponse: Geographic coordinates and location details
@@ -102,7 +105,8 @@ async def geocode_city(
         ```
     """
     logger.info(
-        f"Geocoding API request for city: '{city}' from IP: {get_remote_address(request)}"
+        f"Geocoding API request for city: '{city}' from user: {user.email} "
+        f"(IP: {get_remote_address(request)})"
     )
 
     try:
@@ -113,7 +117,7 @@ async def geocode_city(
             raise HTTPException(status_code=404, detail=f"City '{city}' not found")
 
         logger.info(
-            f"Geocoding API successful for city: '{city}', "
+            f"Geocoding API successful for city: '{city}' by user: {user.email}, "
             f"cached: {result.cached}, coords: ({result.location.lat}, {result.location.lon})"
         )
         return result
@@ -130,7 +134,10 @@ async def geocode_city(
 
 @router.get("/health")
 @limiter.limit("60/minute")  # Higher limit for health checks
-async def geocoding_health(request: Request):
+async def geocoding_health(
+    request: Request,
+    user: User = Depends(current_active_user),  # JWT Bearer token authentication
+):
     """
     Health check endpoint for geocoding service.
 
@@ -139,6 +146,7 @@ async def geocoding_health(request: Request):
 
     Args:
         request: FastAPI request object (required for rate limiting)
+        user: Authenticated user from JWT token
 
     Returns:
         Service health status and cache statistics
@@ -158,7 +166,9 @@ async def geocoding_health(request: Request):
         }
         ```
     """
-    logger.debug(f"Geocoding health check from IP: {get_remote_address(request)}")
+    logger.debug(
+        f"Geocoding health check from user: {user.email} (IP: {get_remote_address(request)})"
+    )
 
     try:
         cache_stats = geocoding_service.get_cache_stats()
@@ -174,7 +184,10 @@ async def geocoding_health(request: Request):
 
 @router.post("/cache/clear")
 @limiter.limit("10/hour")  # Very limited for admin operations
-async def clear_geocoding_cache(request: Request):
+async def clear_geocoding_cache(
+    request: Request,
+    user: User = Depends(current_active_user),  # JWT Bearer token authentication
+):
     """
     Clear the geocoding cache.
 
@@ -183,6 +196,7 @@ async def clear_geocoding_cache(request: Request):
 
     Args:
         request: FastAPI request object (required for rate limiting)
+        user: Authenticated user from JWT token
 
     Returns:
         Cache clear confirmation
@@ -198,7 +212,9 @@ async def clear_geocoding_cache(request: Request):
         }
         ```
     """
-    logger.warning(f"Cache clear requested from IP: {get_remote_address(request)}")
+    logger.warning(
+        f"Cache clear requested by user: {user.email} (IP: {get_remote_address(request)})"
+    )
 
     try:
         geocoding_service.clear_cache()

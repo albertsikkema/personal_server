@@ -1,0 +1,38 @@
+# GitGuardian configuration for personal_server
+# This file configures GitGuardian to properly handle test files and development secrets
+
+# Paths to ignore - test files contain intentional fake secrets
+paths-ignore:
+  - tests/**
+  - bruno/**
+  - ai_info/**
+  - PRPs/**
+
+# Known test secrets that are safe to ignore
+secrets-ignore:
+  # Standard JWT example tokens with "John Doe" payload - commonly used in documentation
+  - "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"
+  - "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiYWRtaW4iOnRydWV9.TJVA95OrM7E2cBab30RMHrHDcEfxjoYZgeFONFh7HgQ"
+  
+  # Expired test JWT token that was accidentally committed - token is expired and no longer valid
+  - "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI4NmJmZDM3MS00YzM3LTQ1MDYtYWEzZi1hYjI5NTc5YTE3MjIiLCJhdWQiOlsiZmFzdGFwaS11c2VyczphdXRoIl0sImV4cCI6MTc1MjMyMTg0OH0.qjGVatOSHTpKg-nAPP4gsGs_5ac5z0TY8mzwxwYq0OI"
+  
+  # Test JWT secrets for CI/testing - these are development-only and publicly visible
+  - "test-jwt-secret-key-for-testing-purposes-minimum-32-chars-required"
+  - "test-jwt-secret-key-for-ci-build-check-minimum-32-chars-required"
+  
+  # Test API keys for CI/testing - these are development-only
+  - "test-api-key-12345"
+  - "test-api-key-for-ci-build-check"
+
+# Ignore specific detectors that are too sensitive for test files
+ignore:
+  - name: "json_web_token"
+    paths:
+      - "tests/**"
+      - "bruno/**"
+  - name: "api_key"
+    paths:
+      - "tests/**"
+      - "bruno/**"
+      - ".github/workflows/**"

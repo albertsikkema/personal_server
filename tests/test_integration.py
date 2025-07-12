@@ -42,25 +42,21 @@ class TestProtectedEndpoints:
 
         assert response.status_code == 401
         data = response.json()
-        assert data["detail"] == "API key missing"
-        assert "request_id" in data
-        assert "timestamp" in data
+        assert data["detail"] == "Unauthorized"
 
     def test_protected_endpoint_invalid_auth(
-        self, client: TestClient, invalid_api_key_headers
+        self, client: TestClient, invalid_bearer_headers
     ):
-        """Test protected endpoint with invalid API key."""
-        response = client.get("/protected", headers=invalid_api_key_headers)
+        """Test protected endpoint with invalid JWT Bearer token."""
+        response = client.get("/protected", headers=invalid_bearer_headers)
 
         assert response.status_code == 401
         data = response.json()
-        assert data["detail"] == "Invalid API key"
-        assert "request_id" in data
-        assert "timestamp" in data
+        assert data["detail"] == "Unauthorized"
 
-    def test_protected_endpoint_valid_auth(self, client: TestClient, api_key_headers):
-        """Test protected endpoint with valid API key."""
-        response = client.get("/protected", headers=api_key_headers)
+    def test_protected_endpoint_valid_auth(self, client: TestClient, bearer_headers):
+        """Test protected endpoint with valid JWT Bearer token."""
+        response = client.get("/protected", headers=bearer_headers)
 
         assert response.status_code == 200
         data = response.json()
@@ -73,15 +69,13 @@ class TestProtectedEndpoints:
 
         assert response.status_code == 401
         data = response.json()
-        assert data["detail"] == "API key missing"
-        assert "request_id" in data
-        assert "timestamp" in data
+        assert data["detail"] == "Unauthorized"
 
     def test_protected_data_endpoint_valid_auth(
-        self, client: TestClient, api_key_headers
+        self, client: TestClient, bearer_headers
     ):
-        """Test protected data endpoint with valid API key."""
-        response = client.get("/protected/data", headers=api_key_headers)
+        """Test protected data endpoint with valid JWT Bearer token."""
+        response = client.get("/protected/data", headers=bearer_headers)
 
         assert response.status_code == 200
         data = response.json()
@@ -102,7 +96,7 @@ class TestAPIDocumentation:
         data = response.json()
         assert "openapi" in data
         assert "info" in data
-        assert data["info"]["title"] == "FastAPI Application"
+        assert data["info"]["title"] == "FastAPI Application with JWT Authentication"
 
     def test_swagger_ui_accessible(self, client: TestClient):
         """Test that Swagger UI is accessible."""
@@ -142,6 +136,9 @@ class TestEnvironmentBasedDocumentation:
             )
 
             API_KEY: str = Field(default="test-api-key-12345678")
+            JWT_SECRET: str = Field(
+                default="test-jwt-secret-key-for-testing-purposes-minimum-32-chars-required"
+            )
             ENV: str = Field(default=env_value)
             CRAWL4AI_API_TOKEN: str | None = Field(default=None)
 
@@ -149,8 +146,8 @@ class TestEnvironmentBasedDocumentation:
 
         # Create FastAPI app with environment-specific docs configuration
         app = FastAPI(
-            title="FastAPI Application",
-            description="A FastAPI application with API key authentication",
+            title="FastAPI Application with JWT Authentication",
+            description="A FastAPI application with JWT Bearer token authentication",
             version="1.0.0",
             docs_url="/docs" if settings.ENV != "production" else None,
             redoc_url="/redoc" if settings.ENV != "production" else None,
@@ -232,7 +229,6 @@ class TestSecurityByDesign:
             "/admin",
             "/secret",
             "/data",
-            "/users/123",
             "/products",
             "/config",
             "/internal",
@@ -264,114 +260,148 @@ class TestSecurityByDesign:
             assert response.json() == {"detail": "Not Found"}
 
 
-class TestHeaderHandling:
-    """Tests for HTTP header handling."""
+class TestJWTAuthentication:
+    """Tests for JWT Bearer token authentication."""
 
-    def test_case_insensitive_headers(self, client: TestClient):
-        """Test that API key headers are case-insensitive as per HTTP standards."""
-        # Test various case combinations that should all work
-        header_variations = [
-            {"X-API-KEY": "test-api-key-12345"},  # Standard case
-            {"x-api-key": "test-api-key-12345"},  # Lowercase
-            {"X-Api-Key": "test-api-key-12345"},  # Mixed case
-            {"x-API-key": "test-api-key-12345"},  # Another mixed case
+    def test_bearer_token_case_sensitive(self, client: TestClient, bearer_headers):
+        """Test that Bearer token authentication is case-sensitive for scheme."""
+        # Valid Bearer token
+        response = client.get("/protected", headers=bearer_headers)
+        assert response.status_code == 200
+
+        # Test case variations - Bearer scheme should be case-insensitive per RFC 7617
+        token = bearer_headers["Authorization"].split(" ")[1]
+        case_variations = [
+            {"Authorization": f"Bearer {token}"},  # Standard case
+            {"Authorization": f"bearer {token}"},  # Lowercase
+            {"Authorization": f"BEARER {token}"},  # Uppercase
         ]
 
-        for headers in header_variations:
+        for headers in case_variations:
             response = client.get("/protected", headers=headers)
             assert response.status_code == 200, (
-                f"Headers {headers} should work - HTTP headers are case-insensitive"
+                f"Headers {headers} should work - Bearer scheme is case-insensitive"
             )
-            data = response.json()
-            assert data["message"] == "Access granted to protected resource"
 
-    def test_invalid_header_names(self, client: TestClient):
-        """Test that only the correct header name works."""
-        invalid_headers = [
-            {"API-KEY": "test-api-key-12345"},  # Missing X-
-            {"X-APIKEY": "test-api-key-12345"},  # Missing dash
-            {"Authorization": "test-api-key-12345"},  # Wrong header name
+    def test_invalid_authorization_schemes(self, client: TestClient, test_user_token):
+        """Test that only Bearer scheme works for JWT tokens."""
+        invalid_schemes = [
+            {"Authorization": f"Basic {test_user_token}"},  # Wrong scheme
+            {"Authorization": f"Token {test_user_token}"},  # Wrong scheme
+            {"Authorization": f"JWT {test_user_token}"},  # Wrong scheme
+            {"Authorization": test_user_token},  # Missing scheme
         ]
 
-        for headers in invalid_headers:
+        for headers in invalid_schemes:
             response = client.get("/protected", headers=headers)
             assert response.status_code == 401, f"Headers {headers} should be rejected"
             data = response.json()
-            assert data["detail"] == "API key missing"
-            assert "request_id" in data
-            assert "timestamp" in data
+            assert data["detail"] == "Unauthorized"
 
 
-class TestSecurityTesting:
-    """Enhanced security testing for injection attacks and edge cases."""
+class TestJWTSecurityTesting:
+    """Enhanced security testing for JWT Bearer token attacks and edge cases."""
 
-    def test_sql_injection_attempt(self, client: TestClient):
-        """Test that SQL injection attempts are handled safely."""
-        malicious_headers = {"X-API-KEY": "'; DROP TABLE users; --"}
-        response = client.get("/protected", headers=malicious_headers)
-        assert response.status_code == 401
-        data = response.json()
-        assert data["detail"] == "Invalid API key"
-        assert "request_id" in data
+    def test_malformed_jwt_tokens(self, client: TestClient):
+        """Test that malformed JWT tokens are rejected safely."""
+        malformed_tokens = [
+            "not.a.jwt",  # Not enough parts
+            "header.payload",  # Missing signature
+            "a.b.c.d",  # Too many parts
+            "header.payload.signature.extra",  # Too many parts
+            "",  # Empty token
+            "Bearer",  # Just the scheme
+        ]
+
+        for token in malformed_tokens:
+            headers = {"Authorization": f"Bearer {token}"}
+            response = client.get("/protected", headers=headers)
+            assert response.status_code == 401, f"Token {token} should be rejected"
+            data = response.json()
+            assert data["detail"] == "Unauthorized"
 
     def test_header_injection_attempt(self, client: TestClient):
-        """Test protection against header injection attacks."""
-        malicious_headers = {"X-API-KEY": "valid-key\r\nSet-Cookie: admin=true"}
-        response = client.get("/protected", headers=malicious_headers)
-        assert response.status_code == 401
-        data = response.json()
-        assert data["detail"] == "Invalid API key"
+        """Test protection against header injection attacks in JWT."""
+        malicious_tokens = [
+            "token\r\nSet-Cookie: admin=true",  # CRLF injection
+            "token\nX-Admin: true",  # LF injection
+            "token; Set-Cookie: admin=true",  # Semicolon injection
+        ]
 
-    def test_xss_attempt_in_header(self, client: TestClient):
-        """Test that XSS attempts in headers are handled safely."""
-        malicious_headers = {"X-API-KEY": "<script>alert('xss')</script>"}
-        response = client.get("/protected", headers=malicious_headers)
-        assert response.status_code == 401
-        data = response.json()
-        assert data["detail"] == "Invalid API key"
+        for token in malicious_tokens:
+            headers = {"Authorization": f"Bearer {token}"}
+            response = client.get("/protected", headers=headers)
+            assert response.status_code == 401, f"Token {token} should be rejected"
+            data = response.json()
+            assert data["detail"] == "Unauthorized"
 
-    def test_extremely_long_api_key(self, client: TestClient):
-        """Test handling of extremely long API key values."""
-        long_key = "a" * 10000  # 10KB API key
-        malicious_headers = {"X-API-KEY": long_key}
-        response = client.get("/protected", headers=malicious_headers)
-        assert response.status_code == 401
-        data = response.json()
-        assert data["detail"] == "Invalid API key"
+    def test_xss_attempt_in_jwt(self, client: TestClient):
+        """Test that XSS attempts in JWT tokens are handled safely."""
+        malicious_tokens = [
+            "<script>alert('xss')</script>",
+            "javascript:alert('xss')",
+            "data:text/html,<script>alert('xss')</script>",
+        ]
 
-    def test_null_byte_injection(self, client: TestClient):
-        """Test protection against null byte injection."""
-        malicious_headers = {"X-API-KEY": "test-api-key-12345\x00malicious"}
-        response = client.get("/protected", headers=malicious_headers)
-        assert response.status_code == 401
-        data = response.json()
-        assert data["detail"] == "Invalid API key"
+        for token in malicious_tokens:
+            headers = {"Authorization": f"Bearer {token}"}
+            response = client.get("/protected", headers=headers)
+            assert response.status_code == 401, f"Token {token} should be rejected"
+            data = response.json()
+            assert data["detail"] == "Unauthorized"
 
-    def test_unicode_normalization_attack(self, client: TestClient):
-        """Test protection against unicode normalization attacks."""
-        # Using different unicode representations that could normalize to valid key
-        malicious_headers = {"X-API-KEY": "test-api-key-12345\u0041"}  # \u0041 is 'A'
-        response = client.get("/protected", headers=malicious_headers)
+    def test_extremely_long_jwt_token(self, client: TestClient):
+        """Test handling of extremely long JWT token values."""
+        long_token = "a" * 10000  # 10KB token
+        headers = {"Authorization": f"Bearer {long_token}"}
+        response = client.get("/protected", headers=headers)
         assert response.status_code == 401
         data = response.json()
-        assert data["detail"] == "Invalid API key"
+        assert data["detail"] == "Unauthorized"
 
-    def test_empty_header_value(self, client: TestClient):
-        """Test handling of empty header values."""
-        malicious_headers = {"X-API-KEY": ""}
-        response = client.get("/protected", headers=malicious_headers)
+    def test_null_byte_injection_jwt(self, client: TestClient):
+        """Test protection against null byte injection in JWT."""
+        malicious_token = "valid-looking-token\x00malicious"
+        headers = {"Authorization": f"Bearer {malicious_token}"}
+        response = client.get("/protected", headers=headers)
         assert response.status_code == 401
         data = response.json()
-        # Empty string is treated as missing API key
-        assert data["detail"] == "API key missing"
+        assert data["detail"] == "Unauthorized"
 
-    def test_whitespace_only_header(self, client: TestClient):
-        """Test handling of whitespace-only header values."""
-        malicious_headers = {"X-API-KEY": "   \t\n   "}
-        response = client.get("/protected", headers=malicious_headers)
+    def test_empty_bearer_token(self, client: TestClient):
+        """Test handling of empty Bearer token values."""
+        headers = {"Authorization": "Bearer "}
+        response = client.get("/protected", headers=headers)
         assert response.status_code == 401
         data = response.json()
-        assert data["detail"] == "Invalid API key"
+        assert data["detail"] == "Unauthorized"
+
+    def test_whitespace_only_token(self, client: TestClient):
+        """Test handling of whitespace-only JWT token values."""
+        headers = {"Authorization": "Bearer    \t\n   "}
+        response = client.get("/protected", headers=headers)
+        assert response.status_code == 401
+        data = response.json()
+        assert data["detail"] == "Unauthorized"
+
+    def test_expired_token_simulation(self, client: TestClient):
+        """Test handling of potentially expired or invalid tokens."""
+        # Test with clearly fake JWT-like tokens that won't trigger secret detection
+        fake_test_tokens = [
+            # Fake JWT-like token structure (not real JWT) for testing
+            "fake.jwt.token.header.payload.signature",
+            # Another fake JWT-like structure
+            "invalid.token.structure.test.only.fake",
+            # Malformed token that looks JWT-like but isn't
+            "header.payload.signature.but.not.real.jwt",
+        ]
+
+        for token in fake_test_tokens:
+            headers = {"Authorization": f"Bearer {token}"}
+            response = client.get("/protected", headers=headers)
+            assert response.status_code == 401, "Test token should be rejected"
+            data = response.json()
+            assert data["detail"] == "Unauthorized"
 
 
 class TestErrorHandling:
@@ -385,9 +415,9 @@ class TestErrorHandling:
         assert response.status_code == 404
         assert response.json() == {"detail": "Not Found"}
 
-    def test_nonexistent_endpoint_with_auth(self, client: TestClient, api_key_headers):
+    def test_nonexistent_endpoint_with_auth(self, client: TestClient, bearer_headers):
         """Test accessing a non-existent endpoint with valid authentication."""
-        response = client.get("/nonexistent", headers=api_key_headers)
+        response = client.get("/nonexistent", headers=bearer_headers)
 
         # With valid auth, should get 404
         assert response.status_code == 404
@@ -412,9 +442,9 @@ class TestErrorHandling:
 class TestGeocodingEndpoints:
     """Integration tests for geocoding endpoints."""
 
-    def test_geocode_city_success(self, client: TestClient, api_key_headers):
+    def test_geocode_city_success(self, client: TestClient, bearer_headers):
         """Test successful city geocoding."""
-        response = client.get("/geocode/city?city=London", headers=api_key_headers)
+        response = client.get("/geocode/city?city=London", headers=bearer_headers)
         assert response.status_code == 200
         data = response.json()
         assert "location" in data
@@ -427,18 +457,18 @@ class TestGeocodingEndpoints:
         assert isinstance(data["location"]["lat"], float)
         assert isinstance(data["location"]["lon"], float)
 
-    def test_geocode_city_not_found(self, client: TestClient, api_key_headers):
+    def test_geocode_city_not_found(self, client: TestClient, bearer_headers):
         """Test geocoding with non-existent city."""
         response = client.get(
-            "/geocode/city?city=Xyzabcdef123NonExistentCity", headers=api_key_headers
+            "/geocode/city?city=Xyzabcdef123NonExistentCity", headers=bearer_headers
         )
         assert response.status_code == 404
         data = response.json()
         assert "City 'Xyzabcdef123NonExistentCity' not found" in data["detail"]
 
-    def test_geocode_health_endpoint(self, client: TestClient, api_key_headers):
+    def test_geocode_health_endpoint(self, client: TestClient, bearer_headers):
         """Test geocoding health endpoint."""
-        response = client.get("/geocode/health", headers=api_key_headers)
+        response = client.get("/geocode/health", headers=bearer_headers)
         assert response.status_code == 200
         data = response.json()
         assert data["service"] == "geocoding"
@@ -446,13 +476,13 @@ class TestGeocodingEndpoints:
         assert "cache_size" in data
         assert data["rate_limiter"] == "active"
 
-    def test_geocode_rate_limiting(self, client: TestClient, api_key_headers):
+    def test_geocode_rate_limiting(self, client: TestClient, bearer_headers):
         """Test user rate limiting."""
         # Make multiple rapid requests
         rate_limited_found = False
         for i in range(15):  # Make more requests to ensure we hit rate limit
             response = client.get(
-                f"/geocode/city?city=TestCity{i}", headers=api_key_headers
+                f"/geocode/city?city=TestCity{i}", headers=bearer_headers
             )
             # Should get normal responses or rate limiting
             assert response.status_code in [200, 404, 429]
@@ -463,10 +493,10 @@ class TestGeocodingEndpoints:
         # Should have hit rate limit at some point
         assert rate_limited_found, "Rate limiting should have been triggered"
 
-    def test_geocode_caching_behavior(self, client: TestClient, api_key_headers):
+    def test_geocode_caching_behavior(self, client: TestClient, bearer_headers):
         """Test that caching works correctly."""
         # First request
-        response1 = client.get("/geocode/city?city=Paris", headers=api_key_headers)
+        response1 = client.get("/geocode/city?city=Paris", headers=bearer_headers)
         # May be rate limited due to previous tests
         if response1.status_code == 429:
             return  # Skip test if rate limited
@@ -477,7 +507,7 @@ class TestGeocodingEndpoints:
             assert data1["cached"] is False
 
             # Second request should be cached
-            response2 = client.get("/geocode/city?city=Paris", headers=api_key_headers)
+            response2 = client.get("/geocode/city?city=Paris", headers=bearer_headers)
             if response2.status_code == 200:
                 data2 = response2.json()
                 assert data2["cached"] is True
@@ -488,24 +518,22 @@ class TestGeocodingEndpoints:
         response = client.get("/geocode/city?city=London")
         assert response.status_code == 401
         data = response.json()
-        assert data["detail"] == "API key missing"
+        assert data["detail"] == "Unauthorized"
 
-    def test_geocode_invalid_input(self, client: TestClient, api_key_headers):
+    def test_geocode_invalid_input(self, client: TestClient, bearer_headers):
         """Test input validation."""
         # Empty city name
-        response = client.get("/geocode/city?city=", headers=api_key_headers)
+        response = client.get("/geocode/city?city=", headers=bearer_headers)
         assert response.status_code == 422
 
         # City name too long (>200 chars)
         long_city = "x" * 201
-        response = client.get(
-            f"/geocode/city?city={long_city}", headers=api_key_headers
-        )
+        response = client.get(f"/geocode/city?city={long_city}", headers=bearer_headers)
         assert response.status_code == 422
 
-    def test_geocode_missing_city_parameter(self, client: TestClient, api_key_headers):
+    def test_geocode_missing_city_parameter(self, client: TestClient, bearer_headers):
         """Test missing city parameter."""
-        response = client.get("/geocode/city", headers=api_key_headers)
+        response = client.get("/geocode/city", headers=bearer_headers)
         assert response.status_code == 422
         data = response.json()
         assert "detail" in data
@@ -527,14 +555,14 @@ class TestGeocodingEndpoints:
         assert "geocoding" in city_endpoint["tags"]
 
     def test_geocode_case_insensitive_city_names(
-        self, client: TestClient, api_key_headers
+        self, client: TestClient, bearer_headers
     ):
         """Test that city names are handled regardless of case."""
         cities = ["london", "LONDON", "London", "LoNdOn"]
 
         responses = []
         for city in cities:
-            response = client.get(f"/geocode/city?city={city}", headers=api_key_headers)
+            response = client.get(f"/geocode/city?city={city}", headers=bearer_headers)
             responses.append(response)
 
         # All should work (either 200 for found or consistent behavior, or 429 for rate limiting)
@@ -542,7 +570,7 @@ class TestGeocodingEndpoints:
             assert response.status_code in [200, 404, 429]
 
     def test_geocode_special_characters_in_city_name(
-        self, client: TestClient, api_key_headers
+        self, client: TestClient, bearer_headers
     ):
         """Test geocoding with special characters in city names."""
         special_cities = [
@@ -553,19 +581,19 @@ class TestGeocodingEndpoints:
         ]
 
         for city in special_cities:
-            response = client.get(f"/geocode/city?city={city}", headers=api_key_headers)
+            response = client.get(f"/geocode/city?city={city}", headers=bearer_headers)
             # Should not error, either found (200) or not found (404), or rate limited (429)
             assert response.status_code in [200, 404, 429, 503]
 
-    def test_geocode_whitespace_handling(self, client: TestClient, api_key_headers):
+    def test_geocode_whitespace_handling(self, client: TestClient, bearer_headers):
         """Test geocoding with whitespace in city names."""
-        response = client.get("/geocode/city?city= London ", headers=api_key_headers)
+        response = client.get("/geocode/city?city= London ", headers=bearer_headers)
         # Should handle whitespace gracefully
         assert response.status_code in [200, 404, 429, 503]
 
-    def test_geocode_response_headers(self, client: TestClient, api_key_headers):
+    def test_geocode_response_headers(self, client: TestClient, bearer_headers):
         """Test that response headers are appropriate."""
-        response = client.get("/geocode/city?city=London", headers=api_key_headers)
+        response = client.get("/geocode/city?city=London", headers=bearer_headers)
 
         if response.status_code == 200:
             assert response.headers["content-type"] == "application/json"
@@ -573,13 +601,13 @@ class TestGeocodingEndpoints:
         # Rate limiting headers (if present)
         # Note: slowapi may add rate limiting headers
 
-    def test_geocode_concurrent_requests(self, client: TestClient, api_key_headers):
+    def test_geocode_concurrent_requests(self, client: TestClient, bearer_headers):
         """Test concurrent requests to geocoding endpoint."""
         import concurrent.futures
 
         def make_request(city_suffix):
             return client.get(
-                f"/geocode/city?city=TestCity{city_suffix}", headers=api_key_headers
+                f"/geocode/city?city=TestCity{city_suffix}", headers=bearer_headers
             )
 
         # Make concurrent requests
@@ -592,12 +620,12 @@ class TestGeocodingEndpoints:
             assert response.status_code in [200, 404, 429, 503]
 
     def test_geocode_service_unavailable_handling(
-        self, client: TestClient, api_key_headers
+        self, client: TestClient, bearer_headers
     ):
         """Test handling when geocoding service encounters errors."""
         # Use a city name that might cause service issues or test with mocked failure
         response = client.get(
-            "/geocode/city?city=SpecialErrorTestCity", headers=api_key_headers
+            "/geocode/city?city=SpecialErrorTestCity", headers=bearer_headers
         )
 
         # Should handle gracefully - either success, not found, rate limited, or service unavailable
@@ -611,7 +639,7 @@ class TestGeocodingEndpoints:
 class TestCrawlingEndpoints:
     """Integration tests for crawling endpoints."""
 
-    def test_crawl_single_url_success(self, client: TestClient, api_key_headers):
+    def test_crawl_single_url_success(self, client: TestClient, bearer_headers):
         """Test single URL crawling (graceful handling of service downtime)."""
         payload = {
             "urls": ["https://example.com"],
@@ -619,7 +647,7 @@ class TestCrawlingEndpoints:
             "cache_mode": "enabled",
         }
 
-        response = client.post("/crawl", json=payload, headers=api_key_headers)
+        response = client.post("/crawl", json=payload, headers=bearer_headers)
         assert response.status_code == 200
         data = response.json()
 
@@ -646,7 +674,7 @@ class TestCrawlingEndpoints:
                 assert "error_message" in result
                 # Service downtime is acceptable for tests
 
-    def test_crawl_multiple_urls(self, client: TestClient, api_key_headers):
+    def test_crawl_multiple_urls(self, client: TestClient, bearer_headers):
         """Test crawling multiple URLs (resilient to service downtime)."""
         payload = {
             "urls": ["https://example.com", "https://httpbin.org/html"],
@@ -655,7 +683,7 @@ class TestCrawlingEndpoints:
             "scrape_external_links": True,
         }
 
-        response = client.post("/crawl", json=payload, headers=api_key_headers)
+        response = client.post("/crawl", json=payload, headers=bearer_headers)
         assert response.status_code == 200
         data = response.json()
 
@@ -677,7 +705,7 @@ class TestCrawlingEndpoints:
             if not result["success"]:
                 assert "error_message" in result
 
-    def test_crawl_with_screenshots(self, client: TestClient, api_key_headers):
+    def test_crawl_with_screenshots(self, client: TestClient, bearer_headers):
         """Test crawling with screenshot capture (resilient to service downtime)."""
         payload = {
             "urls": ["https://example.com"],
@@ -687,7 +715,7 @@ class TestCrawlingEndpoints:
             "screenshot_wait_for": 2,
         }
 
-        response = client.post("/crawl", json=payload, headers=api_key_headers)
+        response = client.post("/crawl", json=payload, headers=bearer_headers)
         assert response.status_code == 200
         data = response.json()
 
@@ -712,7 +740,7 @@ class TestCrawlingEndpoints:
             assert "error_message" in result
 
     def test_crawl_screenshot_dimension_validation(
-        self, client: TestClient, api_key_headers
+        self, client: TestClient, bearer_headers
     ):
         """Test screenshot dimension validation."""
         # Too small dimensions
@@ -723,7 +751,7 @@ class TestCrawlingEndpoints:
             "screenshot_height": 100,  # Below minimum 240
         }
 
-        response = client.post("/crawl", json=payload, headers=api_key_headers)
+        response = client.post("/crawl", json=payload, headers=bearer_headers)
         assert response.status_code == 422
         data = response.json()
         assert "detail" in data
@@ -736,12 +764,12 @@ class TestCrawlingEndpoints:
             "screenshot_height": 3000,  # Above maximum 2160
         }
 
-        response = client.post("/crawl", json=payload, headers=api_key_headers)
+        response = client.post("/crawl", json=payload, headers=bearer_headers)
         assert response.status_code == 422
 
-    def test_crawl_health_endpoint(self, client: TestClient, api_key_headers):
+    def test_crawl_health_endpoint(self, client: TestClient, bearer_headers):
         """Test crawling health endpoint."""
-        response = client.get("/crawl/health", headers=api_key_headers)
+        response = client.get("/crawl/health", headers=bearer_headers)
         assert response.status_code == 200
         data = response.json()
 
@@ -752,9 +780,9 @@ class TestCrawlingEndpoints:
         assert "rate_limiter_active" in data
         assert "crawl4ai_instance" in data
 
-    def test_crawl_cache_clear_endpoint(self, client: TestClient, api_key_headers):
+    def test_crawl_cache_clear_endpoint(self, client: TestClient, bearer_headers):
         """Test cache clearing endpoint."""
-        response = client.post("/crawl/cache/clear", headers=api_key_headers)
+        response = client.post("/crawl/cache/clear", headers=bearer_headers)
         assert response.status_code == 200
         data = response.json()
 
@@ -770,7 +798,7 @@ class TestCrawlingEndpoints:
         response = client.post("/crawl", json=payload)
         assert response.status_code == 401
         data = response.json()
-        assert data["detail"] == "API key missing"
+        assert data["detail"] == "Unauthorized"
 
         # Health endpoint
         response = client.get("/crawl/health")
@@ -780,13 +808,13 @@ class TestCrawlingEndpoints:
         response = client.post("/crawl/cache/clear")
         assert response.status_code == 401
 
-    def test_crawl_rate_limiting(self, client: TestClient, api_key_headers):
+    def test_crawl_rate_limiting(self, client: TestClient, bearer_headers):
         """Test user rate limiting for crawling endpoints."""
         rate_limited_found = False
 
         for i in range(10):  # Make multiple requests to trigger rate limiting
             payload = {"urls": [f"https://example{i}.com"], "cache_mode": "disabled"}
-            response = client.post("/crawl", json=payload, headers=api_key_headers)
+            response = client.post("/crawl", json=payload, headers=bearer_headers)
 
             # Should get normal responses or rate limiting
             assert response.status_code in [200, 429, 503]
@@ -797,7 +825,7 @@ class TestCrawlingEndpoints:
         # Should eventually hit rate limit (5/minute)
         assert rate_limited_found, "Rate limiting should have been triggered"
 
-    def test_crawl_caching_behavior(self, client: TestClient, api_key_headers):
+    def test_crawl_caching_behavior(self, client: TestClient, bearer_headers):
         """Test that caching works correctly (resilient to service downtime)."""
         payload = {
             "urls": ["https://example.com"],
@@ -806,14 +834,14 @@ class TestCrawlingEndpoints:
         }
 
         # First request
-        response1 = client.post("/crawl", json=payload, headers=api_key_headers)
+        response1 = client.post("/crawl", json=payload, headers=bearer_headers)
         if response1.status_code == 429:
             return  # Skip if rate limited
         assert response1.status_code == 200
         data1 = response1.json()
 
         # Second request should use cache (if first was successful)
-        response2 = client.post("/crawl", json=payload, headers=api_key_headers)
+        response2 = client.post("/crawl", json=payload, headers=bearer_headers)
         if response2.status_code == 200:
             data2 = response2.json()
 
@@ -826,7 +854,7 @@ class TestCrawlingEndpoints:
                 assert data1["cached_results"] == 0
                 assert data2["cached_results"] == 0
 
-    def test_crawl_cache_bypass(self, client: TestClient, api_key_headers):
+    def test_crawl_cache_bypass(self, client: TestClient, bearer_headers):
         """Test cache bypass functionality."""
         payload = {
             "urls": ["https://example.com"],
@@ -835,50 +863,50 @@ class TestCrawlingEndpoints:
         }
 
         # Multiple requests with bypass should not use cache
-        response1 = client.post("/crawl", json=payload, headers=api_key_headers)
+        response1 = client.post("/crawl", json=payload, headers=bearer_headers)
         if response1.status_code == 429:
             return  # Skip if rate limited
         assert response1.status_code == 200
         data1 = response1.json()
 
-        response2 = client.post("/crawl", json=payload, headers=api_key_headers)
+        response2 = client.post("/crawl", json=payload, headers=bearer_headers)
         if response2.status_code == 200:
             data2 = response2.json()
             # Both should have 0 cached results since we're bypassing
             assert data1["cached_results"] == 0
             assert data2["cached_results"] == 0
 
-    def test_crawl_input_validation(self, client: TestClient, api_key_headers):
+    def test_crawl_input_validation(self, client: TestClient, bearer_headers):
         """Test input validation for crawling requests."""
         # Empty URLs list
         payload = {"urls": []}
-        response = client.post("/crawl", json=payload, headers=api_key_headers)
+        response = client.post("/crawl", json=payload, headers=bearer_headers)
         assert response.status_code == 422
 
         # Invalid URL format
         payload = {"urls": ["not-a-valid-url"]}
-        response = client.post("/crawl", json=payload, headers=api_key_headers)
+        response = client.post("/crawl", json=payload, headers=bearer_headers)
         assert response.status_code == 422
 
         # Too many URLs (>10)
         payload = {"urls": [f"https://example{i}.com" for i in range(15)]}
-        response = client.post("/crawl", json=payload, headers=api_key_headers)
+        response = client.post("/crawl", json=payload, headers=bearer_headers)
         assert response.status_code == 422
 
-    def test_crawl_invalid_cache_mode(self, client: TestClient, api_key_headers):
+    def test_crawl_invalid_cache_mode(self, client: TestClient, bearer_headers):
         """Test invalid cache mode validation."""
         payload = {"urls": ["https://example.com"], "cache_mode": "invalid_mode"}
 
-        response = client.post("/crawl", json=payload, headers=api_key_headers)
+        response = client.post("/crawl", json=payload, headers=bearer_headers)
         assert response.status_code == 422
         data = response.json()
         assert "detail" in data
 
-    def test_crawl_markdown_only_mode(self, client: TestClient, api_key_headers):
+    def test_crawl_markdown_only_mode(self, client: TestClient, bearer_headers):
         """Test markdown-only crawling mode (resilient to service downtime)."""
         payload = {"urls": ["https://example.com"], "markdown_only": True}
 
-        response = client.post("/crawl", json=payload, headers=api_key_headers)
+        response = client.post("/crawl", json=payload, headers=bearer_headers)
 
         # Handle rate limiting gracefully
         if response.status_code == 429:
@@ -906,7 +934,7 @@ class TestCrawlingEndpoints:
             if "metadata" in result:
                 assert result["metadata"] is None
 
-    def test_crawl_link_extraction_options(self, client: TestClient, api_key_headers):
+    def test_crawl_link_extraction_options(self, client: TestClient, bearer_headers):
         """Test link extraction configuration."""
         payload = {
             "urls": ["https://example.com"],
@@ -915,7 +943,7 @@ class TestCrawlingEndpoints:
             "markdown_only": False,
         }
 
-        response = client.post("/crawl", json=payload, headers=api_key_headers)
+        response = client.post("/crawl", json=payload, headers=bearer_headers)
 
         # Handle rate limiting gracefully
         if response.status_code == 429:
@@ -948,7 +976,7 @@ class TestCrawlingEndpoints:
         crawl_endpoint = openapi_schema["paths"]["/crawl"]["post"]
         assert "crawling" in crawl_endpoint["tags"]
 
-    def test_crawl_concurrent_requests(self, client: TestClient, api_key_headers):
+    def test_crawl_concurrent_requests(self, client: TestClient, bearer_headers):
         """Test concurrent requests to crawling endpoint."""
         import concurrent.futures
 
@@ -957,7 +985,7 @@ class TestCrawlingEndpoints:
                 "urls": [f"https://example{url_suffix}.com"],
                 "cache_mode": "disabled",
             }
-            return client.post("/crawl", json=payload, headers=api_key_headers)
+            return client.post("/crawl", json=payload, headers=bearer_headers)
 
         # Make concurrent requests
         with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
@@ -969,12 +997,12 @@ class TestCrawlingEndpoints:
             assert response.status_code in [200, 429, 503]
 
     def test_crawl_service_unavailable_handling(
-        self, client: TestClient, api_key_headers
+        self, client: TestClient, bearer_headers
     ):
         """Test handling when Crawl4AI service is unavailable."""
         payload = {"urls": ["https://example.com"], "markdown_only": True}
 
-        response = client.post("/crawl", json=payload, headers=api_key_headers)
+        response = client.post("/crawl", json=payload, headers=bearer_headers)
 
         # Should handle gracefully - return 200 with failed crawl results when service is down
         assert response.status_code in [200, 429, 503]
@@ -998,12 +1026,12 @@ class TestCrawlingEndpoints:
                 or "unavailable" in data["detail"].lower()
             )
 
-    def test_crawl_error_response_format(self, client: TestClient, api_key_headers):
+    def test_crawl_error_response_format(self, client: TestClient, bearer_headers):
         """Test that error responses follow correct format."""
         # Test with invalid input to trigger error
         payload = {"urls": ["invalid-url"]}
 
-        response = client.post("/crawl", json=payload, headers=api_key_headers)
+        response = client.post("/crawl", json=payload, headers=bearer_headers)
         assert response.status_code == 422
         data = response.json()
 
@@ -1011,16 +1039,16 @@ class TestCrawlingEndpoints:
         assert "detail" in data
         # FastAPI validation errors have specific format
 
-    def test_crawl_response_headers(self, client: TestClient, api_key_headers):
+    def test_crawl_response_headers(self, client: TestClient, bearer_headers):
         """Test that response headers are appropriate."""
         payload = {"urls": ["https://example.com"]}
 
-        response = client.post("/crawl", json=payload, headers=api_key_headers)
+        response = client.post("/crawl", json=payload, headers=bearer_headers)
 
         if response.status_code == 200:
             assert response.headers["content-type"] == "application/json"
 
-    def test_crawl_recursive_basic(self, client: TestClient, api_key_headers):
+    def test_crawl_recursive_basic(self, client: TestClient, bearer_headers):
         """Test basic recursive crawling functionality."""
         payload = {
             "urls": ["https://example.com"],
@@ -1031,7 +1059,7 @@ class TestCrawlingEndpoints:
             "cache_mode": "disabled",
         }
 
-        response = client.post("/crawl", json=payload, headers=api_key_headers)
+        response = client.post("/crawl", json=payload, headers=bearer_headers)
 
         # Handle rate limiting gracefully
         if response.status_code == 429:
@@ -1053,7 +1081,7 @@ class TestCrawlingEndpoints:
                 assert isinstance(result["depth"], int)
                 assert result["depth"] >= 0
 
-    def test_crawl_recursive_validation(self, client: TestClient, api_key_headers):
+    def test_crawl_recursive_validation(self, client: TestClient, bearer_headers):
         """Test validation for recursive crawling parameters."""
         # Test 1: follow_internal_links requires scrape_internal_links
         payload = {
@@ -1062,7 +1090,7 @@ class TestCrawlingEndpoints:
             "follow_internal_links": True,
         }
 
-        response = client.post("/crawl", json=payload, headers=api_key_headers)
+        response = client.post("/crawl", json=payload, headers=bearer_headers)
         assert response.status_code == 422
         data = response.json()
         assert "detail" in data
@@ -1079,11 +1107,11 @@ class TestCrawlingEndpoints:
             "follow_internal_links": True,
         }
 
-        response = client.post("/crawl", json=payload, headers=api_key_headers)
+        response = client.post("/crawl", json=payload, headers=bearer_headers)
         assert response.status_code == 422
 
     def test_crawl_recursive_max_depth_validation(
-        self, client: TestClient, api_key_headers
+        self, client: TestClient, bearer_headers
     ):
         """Test max_depth parameter validation."""
         # Test max_depth too high
@@ -1094,7 +1122,7 @@ class TestCrawlingEndpoints:
             "max_depth": 10,  # Above maximum of 5
         }
 
-        response = client.post("/crawl", json=payload, headers=api_key_headers)
+        response = client.post("/crawl", json=payload, headers=bearer_headers)
         assert response.status_code == 422
 
         # Test max_depth too low
@@ -1105,11 +1133,11 @@ class TestCrawlingEndpoints:
             "max_depth": 0,  # Below minimum of 1
         }
 
-        response = client.post("/crawl", json=payload, headers=api_key_headers)
+        response = client.post("/crawl", json=payload, headers=bearer_headers)
         assert response.status_code == 422
 
     def test_crawl_recursive_max_pages_validation(
-        self, client: TestClient, api_key_headers
+        self, client: TestClient, bearer_headers
     ):
         """Test max_pages parameter validation."""
         # Test max_pages too high
@@ -1120,7 +1148,7 @@ class TestCrawlingEndpoints:
             "max_pages": 100,  # Above maximum of 50
         }
 
-        response = client.post("/crawl", json=payload, headers=api_key_headers)
+        response = client.post("/crawl", json=payload, headers=bearer_headers)
         assert response.status_code == 422
 
         # Test max_pages too low
@@ -1131,12 +1159,10 @@ class TestCrawlingEndpoints:
             "max_pages": 0,  # Below minimum of 1
         }
 
-        response = client.post("/crawl", json=payload, headers=api_key_headers)
+        response = client.post("/crawl", json=payload, headers=bearer_headers)
         assert response.status_code == 422
 
-    def test_crawl_recursive_with_screenshots(
-        self, client: TestClient, api_key_headers
-    ):
+    def test_crawl_recursive_with_screenshots(self, client: TestClient, bearer_headers):
         """Test recursive crawling with screenshots enabled."""
         payload = {
             "urls": ["https://example.com"],
@@ -1150,7 +1176,7 @@ class TestCrawlingEndpoints:
             "cache_mode": "disabled",
         }
 
-        response = client.post("/crawl", json=payload, headers=api_key_headers)
+        response = client.post("/crawl", json=payload, headers=bearer_headers)
 
         # Handle rate limiting gracefully
         if response.status_code == 429:
@@ -1163,7 +1189,7 @@ class TestCrawlingEndpoints:
         assert "total_urls" in data
         assert "results" in data
 
-    def test_crawl_recursive_caching(self, client: TestClient, api_key_headers):
+    def test_crawl_recursive_caching(self, client: TestClient, bearer_headers):
         """Test that recursive crawling respects cache settings."""
         payload = {
             "urls": ["https://example.com"],
@@ -1175,14 +1201,14 @@ class TestCrawlingEndpoints:
         }
 
         # First request
-        response1 = client.post("/crawl", json=payload, headers=api_key_headers)
+        response1 = client.post("/crawl", json=payload, headers=bearer_headers)
         if response1.status_code == 429:
             return  # Skip if rate limited
         assert response1.status_code == 200
         data1 = response1.json()
 
         # Second request should use cache
-        response2 = client.post("/crawl", json=payload, headers=api_key_headers)
+        response2 = client.post("/crawl", json=payload, headers=bearer_headers)
         if response2.status_code == 200:
             data2 = response2.json()
 
@@ -1191,7 +1217,7 @@ class TestCrawlingEndpoints:
                 assert data2["cached_results"] >= data1["cached_results"]
 
     def test_crawl_follow_external_links_validation(
-        self, client: TestClient, api_key_headers
+        self, client: TestClient, bearer_headers
     ):
         """Test validation for external link following."""
         # Test that follow_external_links requires scrape_external_links
@@ -1201,13 +1227,13 @@ class TestCrawlingEndpoints:
             "follow_external_links": True,
         }
 
-        response = client.post("/crawl", json=payload, headers=api_key_headers)
+        response = client.post("/crawl", json=payload, headers=bearer_headers)
         assert response.status_code == 422
         data = response.json()
         assert "detail" in data
 
     def test_crawl_follow_external_links_basic(
-        self, client: TestClient, api_key_headers
+        self, client: TestClient, bearer_headers
     ):
         """Test basic external link following functionality."""
         payload = {
@@ -1219,7 +1245,7 @@ class TestCrawlingEndpoints:
             "cache_mode": "disabled",
         }
 
-        response = client.post("/crawl", json=payload, headers=api_key_headers)
+        response = client.post("/crawl", json=payload, headers=bearer_headers)
 
         # Handle rate limiting gracefully
         if response.status_code == 429:
@@ -1241,7 +1267,7 @@ class TestCrawlingEndpoints:
                 assert isinstance(result["depth"], int)
                 assert result["depth"] >= 0
 
-    def test_crawl_follow_both_link_types(self, client: TestClient, api_key_headers):
+    def test_crawl_follow_both_link_types(self, client: TestClient, bearer_headers):
         """Test following both internal and external links."""
         payload = {
             "urls": ["https://example.com"],
@@ -1254,7 +1280,7 @@ class TestCrawlingEndpoints:
             "cache_mode": "disabled",
         }
 
-        response = client.post("/crawl", json=payload, headers=api_key_headers)
+        response = client.post("/crawl", json=payload, headers=bearer_headers)
 
         # Handle rate limiting gracefully
         if response.status_code == 429:
@@ -1273,7 +1299,7 @@ class TestCrawlingEndpoints:
                 assert "depth" in result
 
     def test_crawl_external_links_safety_validation(
-        self, client: TestClient, api_key_headers
+        self, client: TestClient, bearer_headers
     ):
         """Test safety validation for external link following."""
         # Test depth limit for external links
@@ -1285,7 +1311,7 @@ class TestCrawlingEndpoints:
             "max_pages": 5,
         }
 
-        response = client.post("/crawl", json=payload, headers=api_key_headers)
+        response = client.post("/crawl", json=payload, headers=bearer_headers)
         assert response.status_code == 422
         error_data = response.json()
         assert "maximum depth is 3 for security" in str(error_data)
@@ -1299,7 +1325,7 @@ class TestCrawlingEndpoints:
             "max_pages": 25,  # Too high for external links
         }
 
-        response = client.post("/crawl", json=payload, headers=api_key_headers)
+        response = client.post("/crawl", json=payload, headers=bearer_headers)
         assert response.status_code == 422
         error_data = response.json()
         assert "maximum pages is 20 for security" in str(error_data)
@@ -1314,12 +1340,12 @@ class TestCrawlingEndpoints:
             "cache_mode": "disabled",
         }
 
-        response = client.post("/crawl", json=payload, headers=api_key_headers)
+        response = client.post("/crawl", json=payload, headers=bearer_headers)
         # Should be accepted (200 or 429 for rate limiting)
         assert response.status_code in [200, 429]
 
     def test_crawl_internal_links_full_limits_allowed(
-        self, client: TestClient, api_key_headers
+        self, client: TestClient, bearer_headers
     ):
         """Test that internal link following can use full limits."""
         # Internal links should allow full limits
@@ -1332,6 +1358,6 @@ class TestCrawlingEndpoints:
             "cache_mode": "disabled",
         }
 
-        response = client.post("/crawl", json=payload, headers=api_key_headers)
+        response = client.post("/crawl", json=payload, headers=bearer_headers)
         # Should be accepted (200 or 429 for rate limiting)
         assert response.status_code in [200, 429]

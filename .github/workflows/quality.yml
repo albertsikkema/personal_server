@@ -4,9 +4,10 @@ name: Quality & Testing
 # It runs comprehensive linting, formatting checks, and tests to maintain high code standards.
 # 
 # What it does:
-# - Detects changes to Python code, config files, and workflows
+# - Detects changes to Python code, config files, migrations, and workflows
+# - Sets up separate test database with Alembic migrations
 # - Runs ruff linting and formatting checks (no auto-fixes in CI)
-# - Executes full test suite with coverage reporting
+# - Executes full test suite with coverage reporting on isolated database
 # - Validates application can start and health endpoint responds
 # - Uses uv for 10-100x faster dependency management
 # - Caches dependencies for improved build performance
@@ -28,6 +29,8 @@ on:
       - 'pyproject.toml'
       - 'uv.lock'
       - 'Makefile'
+      - 'alembic.ini'
+      - 'alembic/**'
       - '.github/workflows/**'
   pull_request:
     branches: [main, dev]
@@ -36,6 +39,8 @@ on:
       - 'pyproject.toml'
       - 'uv.lock'
       - 'Makefile'
+      - 'alembic.ini'
+      - 'alembic/**'
       - '.github/workflows/**'
   workflow_dispatch:  # Manual trigger
 
@@ -60,6 +65,8 @@ jobs:
               - 'pyproject.toml'
               - 'uv.lock'
               - 'Makefile'
+              - 'alembic.ini'
+              - 'alembic/**'
             docs:
               - 'README.md'
               - 'PRPs/**'
@@ -97,7 +104,21 @@ jobs:
       - name: Install dependencies
         run: uv sync
       
+      - name: Set up test database
+        env:
+          API_KEY: "test-api-key-for-ci-build-check"
+          JWT_SECRET: "test-jwt-secret-key-for-ci-build-check-minimum-32-chars-required"
+          DATABASE_URL: "sqlite+aiosqlite:///./test_database.db"
+        run: |
+          echo "Setting up test database..."
+          uv run alembic upgrade head
+          echo "✅ Database migrations applied successfully"
+      
       - name: Run make check-commit
+        env:
+          API_KEY: "test-api-key-for-ci-build-check"
+          JWT_SECRET: "test-jwt-secret-key-for-ci-build-check-minimum-32-chars-required"
+          DATABASE_URL: "sqlite+aiosqlite:///./test_database.db"
         run: make check-commit
       
       - name: Generate quality summary
@@ -160,9 +181,21 @@ jobs:
       - name: Install dependencies
         run: uv sync
       
+      - name: Set up test database
+        env:
+          API_KEY: "test-api-key-for-ci-build-check"
+          JWT_SECRET: "test-jwt-secret-key-for-ci-build-check-minimum-32-chars-required"
+          DATABASE_URL: "sqlite+aiosqlite:///./test_database.db"
+        run: |
+          echo "Setting up test database..."
+          uv run alembic upgrade head
+          echo "✅ Database migrations applied successfully"
+      
       - name: Test application startup
         env:
           API_KEY: "test-api-key-for-ci-build-check"
+          JWT_SECRET: "test-jwt-secret-key-for-ci-build-check-minimum-32-chars-required"
+          DATABASE_URL: "sqlite+aiosqlite:///./test_database.db"
         run: |
           echo "Testing application import..."
           uv run python -c "from main import app; print('✅ Application imports successfully')"
@@ -172,6 +205,8 @@ jobs:
       - name: Run development server test
         env:
           API_KEY: "test-api-key-for-ci-build-check"
+          JWT_SECRET: "test-jwt-secret-key-for-ci-build-check-minimum-32-chars-required"
+          DATABASE_URL: "sqlite+aiosqlite:///./test_database.db"
         run: |
           timeout 10s uv run uvicorn main:app --host 0.0.0.0 --port 8000 &
           sleep 5
