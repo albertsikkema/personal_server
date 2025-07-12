@@ -162,7 +162,7 @@ jobs:
                 echo "   - All Python packages are secure" >> $GITHUB_STEP_SUMMARY
               else
                 echo "❌ **Dependencies**: $vulnerability_count vulnerabilities found in $vulnerable_packages package(s)" >> $GITHUB_STEP_SUMMARY
-                echo "   - 📄 [Download detailed vulnerability report](https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID)" >> $GITHUB_STEP_SUMMARY
+                echo "   - 📄 [View workflow run and download vulnerability-report artifact](https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID)" >> $GITHUB_STEP_SUMMARY
                 echo "   - Update affected packages to secure versions" >> $GITHUB_STEP_SUMMARY
                 
                 echo "" >> $GITHUB_STEP_SUMMARY
@@ -181,10 +181,25 @@ jobs:
       - name: Upload vulnerability report
         if: always()
         uses: actions/upload-artifact@v4
+        id: upload-vuln-report
         with:
           name: vulnerability-report
           path: vulnerability-report.json
           retention-days: 30
+      
+      - name: Update summary with artifact link
+        if: always()
+        run: |
+          # Try to get artifact ID and update summary
+          sleep 5  # Wait for artifact to be processed
+          artifact_id=$(gh api repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts --jq '.artifacts[] | select(.name == "vulnerability-report") | .id' 2>/dev/null || echo "")
+          
+          if [ ! -z "$artifact_id" ]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "🔗 **Direct Download**: [vulnerability-report.json](https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts/$artifact_id)" >> $GITHUB_STEP_SUMMARY
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       
       - name: Minimize uv cache
         run: uv cache prune --ci
@@ -291,7 +306,7 @@ jobs:
                 echo "   - 🔴 High: $high_count issues" >> $GITHUB_STEP_SUMMARY
                 echo "   - 🟡 Medium: $medium_count issues" >> $GITHUB_STEP_SUMMARY
                 echo "   - 🟢 Low: $low_count issues" >> $GITHUB_STEP_SUMMARY
-                echo "   - 📄 [Download detailed security report](https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID)" >> $GITHUB_STEP_SUMMARY
+                echo "   - 📄 [View workflow run and download bandit-report artifact](https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID)" >> $GITHUB_STEP_SUMMARY
                 echo "" >> $GITHUB_STEP_SUMMARY
                 echo "### Critical Issues Found:" >> $GITHUB_STEP_SUMMARY
                 cat bandit-report.json | jq -r '.results[] | select(.issue_severity == "HIGH" or .issue_severity == "MEDIUM") | "- **\(.test_id)** (Line \(.line_number)): \(.issue_text)"' 2>/dev/null | head -5 >> $GITHUB_STEP_SUMMARY || echo "- See full report in artifacts" >> $GITHUB_STEP_SUMMARY
@@ -308,10 +323,25 @@ jobs:
       - name: Upload bandit report
         if: always()
         uses: actions/upload-artifact@v4
+        id: upload-bandit-report
         with:
           name: bandit-report
           path: bandit-report.json
           retention-days: 30
+      
+      - name: Update summary with bandit artifact link
+        if: always()
+        run: |
+          # Try to get artifact ID and update summary
+          sleep 5  # Wait for artifact to be processed
+          artifact_id=$(gh api repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts --jq '.artifacts[] | select(.name == "bandit-report") | .id' 2>/dev/null || echo "")
+          
+          if [ ! -z "$artifact_id" ]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "🔗 **Direct Download**: [bandit-report.json](https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts/$artifact_id)" >> $GITHUB_STEP_SUMMARY
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       
       - name: Minimize uv cache
         run: uv cache prune --ci
