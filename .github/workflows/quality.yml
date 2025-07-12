@@ -160,10 +160,14 @@ jobs:
         run: uv sync
       
       - name: Test application startup
+        env:
+          API_KEY: "test-api-key-for-ci-build-check"
         run: |
           uv run python -c "from main import app; print('✅ Application imports successfully')"
       
       - name: Run development server test
+        env:
+          API_KEY: "test-api-key-for-ci-build-check"
         run: |
           timeout 10s uv run uvicorn main:app --host 0.0.0.0 --port 8000 &
           sleep 5
