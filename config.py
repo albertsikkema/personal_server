@@ -150,7 +150,9 @@ class Settings(BaseSettings):
             self.MCP_JWT_EXPIRE_MINUTES = self.JWT_EXPIRE_MINUTES
 
         # In production, warn if using auto-generation
-        if self.ENV == "production" and (not self.MCP_JWT_PRIVATE_KEY or not self.MCP_JWT_PUBLIC_KEY):
+        if self.ENV == "production" and (
+            not self.MCP_JWT_PRIVATE_KEY or not self.MCP_JWT_PUBLIC_KEY
+        ):
             import logging
 
             logger = logging.getLogger(__name__)
