@@ -92,7 +92,6 @@ jobs:
       
       - name: Run pip-audit
         run: uv run pip-audit --format=json --output=vulnerability-report.json
-        continue-on-error: true
       
       - name: Upload vulnerability report
         if: always()
@@ -140,8 +139,7 @@ jobs:
         run: uv add --dev bandit
       
       - name: Run bandit
-        run: uv run bandit -r main.py models/ routers/ services/ mcp_integration/ dependencies.py config.py middleware.py utils/ -f json -o bandit-report.json || true
-        continue-on-error: true
+        run: uv run bandit -r main.py models/ routers/ services/ mcp_integration/ dependencies.py config.py middleware.py utils/ -f json -o bandit-report.json
       
       - name: Upload bandit report
         if: always()
