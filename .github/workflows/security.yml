@@ -137,4 +137,7 @@ jobs:
           echo "   - **GitHub Security Integration**: Results available in Security tab" >> $GITHUB_STEP_SUMMARY
           echo "   - **Action Version**: PyCQA/bandit-action@v1" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 🔧 Security Tools Used" >> $GITHUB_STEP_SUMMARY
+          echo "- **PyPA pip-audit**: Official Python dependency vulnerability scanning" >> $GITHUB_STEP_SUMMARY
+          echo "- **PyCQA Bandit**: Official Python source code security analysis" >> $GITHUB_STEP_SUMMARY
          

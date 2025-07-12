@@ -88,8 +88,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: /tmp/.uv-cache
-          key: uv-${{ runner.os }}-${{ hashFiles('uv.lock') }}
+          key: uv-${{ runner.os }}-${{ github.ref_name }}-${{ hashFiles('uv.lock') }}
           restore-keys: |
+            uv-${{ runner.os }}-${{ github.ref_name }}-
             uv-${{ runner.os }}-${{ hashFiles('uv.lock') }}
             uv-${{ runner.os }}
       
@@ -163,7 +164,10 @@ jobs:
         env:
           API_KEY: "test-api-key-for-ci-build-check"
         run: |
+          echo "Testing application import..."
           uv run python -c "from main import app; print('✅ Application imports successfully')"
+          echo "Testing FastAPI app creation..."
+          uv run python -c "from main import app; assert app is not None; print('✅ FastAPI app created successfully')"
       
       - name: Run development server test
         env:
