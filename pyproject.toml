@@ -17,7 +17,7 @@ dependencies = [
     "httpx",
     "fastmcp",
     # SECURITY FAULT: Intentionally vulnerable package for testing pip-audit
-    "jinja2==2.10.1",  # Known CVE-2019-10906: Jinja2 sandbox escape vulnerability
+    "pillow==8.2.0",  # Known CVE-2021-34552: Pillow buffer overflow vulnerability
 ]
 
 [dependency-groups]
