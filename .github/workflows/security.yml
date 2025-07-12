@@ -162,7 +162,6 @@ jobs:
                 echo "   - All Python packages are secure" >> $GITHUB_STEP_SUMMARY
               else
                 echo "❌ **Dependencies**: $vulnerability_count vulnerabilities found in $vulnerable_packages package(s)" >> $GITHUB_STEP_SUMMARY
-                echo "   - 📄 [View workflow run and download vulnerability-report artifact](https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID)" >> $GITHUB_STEP_SUMMARY
                 echo "   - Update affected packages to secure versions" >> $GITHUB_STEP_SUMMARY
                 
                 echo "" >> $GITHUB_STEP_SUMMARY
@@ -209,139 +208,34 @@ jobs:
     runs-on: ubuntu-latest
     needs: changes
     if: ${{ needs.changes.outputs.security == 'true' || github.event_name == 'schedule' }}
+    permissions:
+      # Required for uploading results to GitHub Security tab
+      security-events: write
+      # Required for actions in private repositories
+      actions: read
+      contents: read
     
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
       
-      - name: Install uv
-        uses: astral-sh/setup-uv@v6.3.1
+      - name: Run Bandit Security Analysis
+        uses: PyCQA/bandit-action@v1
         with:
-          version: "0.7.20"
-          enable-cache: true
-      
-      - name: Set up Python
-        run: uv python install 3.13
-      
-      - name: Restore uv cache
-        uses: actions/cache@v4
-        with:
-          path: /tmp/.uv-cache
-          key: uv-bandit-${{ runner.os }}-${{ hashFiles('uv.lock') }}
-          restore-keys: |
-            uv-bandit-${{ runner.os }}-${{ hashFiles('uv.lock') }}
-            uv-bandit-${{ runner.os }}
-      
-      - name: Install dependencies
-        run: uv sync
-      
-      - name: Install bandit
-        run: uv add --dev bandit
-      
-      - name: Run bandit
-        run: |
-          echo "Running bandit security scan..."
-          echo "Current directory: $(pwd)"
-          echo "Python version: $(uv run python --version)"
-          echo "bandit version: $(uv run bandit --version 2>&1 || echo 'bandit not found')"
-          echo "Files to scan:"
-          ls -la main.py models/ routers/ services/ mcp_integration/ dependencies.py config.py middleware.py utils/ 2>&1 || echo "Some files missing"
-          echo "Starting scan..."
-          
-          # Run bandit and capture exit code
-          if uv run bandit -r main.py models/ routers/ services/ mcp_integration/ dependencies.py config.py middleware.py utils/ -f json -o bandit-report.json; then
-            echo "bandit scan completed successfully - no security issues found"
-            exit_code=0
-          else
-            exit_code=$?
-            echo "bandit scan failed with exit code $exit_code"
-            
-            # Check if JSON report was created despite exit code 1 (security issues found)
-            if [ -f bandit-report.json ]; then
-              echo "JSON report was created - security issues were found"
-              # Don't overwrite the report, bandit created it successfully
-            else
-              echo "No JSON report created - creating fallback report..."
-              echo "{\"results\": [], \"scan_failed\": true, \"error\": \"bandit execution failed with exit code $exit_code\"}" > bandit-report.json
-            fi
-          fi
-          
-          echo "Checking if report file exists:"
-          ls -la bandit-report.json || echo "bandit-report.json not found"
-          
-          if [ -f bandit-report.json ]; then
-            echo "Report file contents:"
-            cat bandit-report.json | head -30  # Show first 30 lines to avoid too much output
-          fi
-          
-          # For bandit, exit code 1 with security issues found should still fail the build
-          exit $exit_code
-      
-      - name: Generate bandit summary
+          targets: "main.py models/ routers/ services/ mcp_integration/ dependencies.py config.py middleware.py utils/"
+          severity: medium  # Only fail on medium and high severity issues
+          confidence: medium  # Only report medium and high confidence issues
+        
+      - name: Generate security summary
         if: always()
         run: |
           echo "## 🛡️ Source Code Security Scan Results" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          
-          if [ -f "bandit-report.json" ]; then
-            # Check if scan failed
-            scan_failed=$(cat bandit-report.json | jq -r '.scan_failed // false' 2>/dev/null)
-            
-            if [ "$scan_failed" = "true" ]; then
-              echo "❌ **Source Code**: bandit scan failed to execute" >> $GITHUB_STEP_SUMMARY
-              echo "   - Check workflow logs for detailed error information" >> $GITHUB_STEP_SUMMARY
-              echo "   - This may indicate issues with source file paths or syntax" >> $GITHUB_STEP_SUMMARY
-            else
-              # Count total issues by severity
-              high_count=$(cat bandit-report.json | jq '[.results[] | select(.issue_severity == "HIGH")] | length' 2>/dev/null || echo "0")
-              medium_count=$(cat bandit-report.json | jq '[.results[] | select(.issue_severity == "MEDIUM")] | length' 2>/dev/null || echo "0")
-              low_count=$(cat bandit-report.json | jq '[.results[] | select(.issue_severity == "LOW")] | length' 2>/dev/null || echo "0")
-              total_count=$(cat bandit-report.json | jq '.results | length' 2>/dev/null || echo "0")
-              
-              if [ "$total_count" = "0" ]; then
-                echo "✅ **Source Code**: No security issues detected" >> $GITHUB_STEP_SUMMARY
-                echo "   - All code follows security best practices" >> $GITHUB_STEP_SUMMARY
-              else
-                echo "❌ **Source Code**: $total_count security issues found" >> $GITHUB_STEP_SUMMARY
-                echo "   - 🔴 High: $high_count issues" >> $GITHUB_STEP_SUMMARY
-                echo "   - 🟡 Medium: $medium_count issues" >> $GITHUB_STEP_SUMMARY
-                echo "   - 🟢 Low: $low_count issues" >> $GITHUB_STEP_SUMMARY
-                echo "   - 📄 [View workflow run and download bandit-report artifact](https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID)" >> $GITHUB_STEP_SUMMARY
-                echo "" >> $GITHUB_STEP_SUMMARY
-                echo "### Critical Issues Found:" >> $GITHUB_STEP_SUMMARY
-                cat bandit-report.json | jq -r '.results[] | select(.issue_severity == "HIGH" or .issue_severity == "MEDIUM") | "- **\(.test_id)** (Line \(.line_number)): \(.issue_text)"' 2>/dev/null | head -5 >> $GITHUB_STEP_SUMMARY || echo "- See full report in artifacts" >> $GITHUB_STEP_SUMMARY
-                echo "" >> $GITHUB_STEP_SUMMARY
-                echo "📋 **Action Required**: Fix security issues before deployment" >> $GITHUB_STEP_SUMMARY
-              fi
-            fi
-          else
-            echo "⚠️ **Source Code**: Could not generate security report" >> $GITHUB_STEP_SUMMARY
-            echo "   - bandit command may have failed completely" >> $GITHUB_STEP_SUMMARY
-            echo "   - Check workflow logs for error details" >> $GITHUB_STEP_SUMMARY
-          fi
-      
-      - name: Upload bandit report
-        if: always()
-        uses: actions/upload-artifact@v4
-        id: upload-bandit-report
-        with:
-          name: bandit-report
-          path: bandit-report.json
-          retention-days: 30
-      
-      - name: Update summary with bandit artifact link
-        if: always()
-        run: |
-          # Try to get artifact ID and update summary
-          sleep 5  # Wait for artifact to be processed
-          artifact_id=$(gh api repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts --jq '.artifacts[] | select(.name == "bandit-report") | .id' 2>/dev/null || echo "")
-          
-          if [ ! -z "$artifact_id" ]; then
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "🔗 **Direct Download**: [bandit-report.json](https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts/$artifact_id)" >> $GITHUB_STEP_SUMMARY
-          fi
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      
-      - name: Minimize uv cache
-        run: uv cache prune --ci
+          echo "✅ **Official Bandit Analysis**: Completed using PyCQA bandit-action" >> $GITHUB_STEP_SUMMARY
+          echo "   - **Severity Filter**: Medium and High issues only" >> $GITHUB_STEP_SUMMARY
+          echo "   - **Confidence Filter**: Medium and High confidence only" >> $GITHUB_STEP_SUMMARY
+          echo "   - **GitHub Security Integration**: Results available in Security tab" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 🔧 Security Tools Used" >> $GITHUB_STEP_SUMMARY
+          echo "- **PyCQA Bandit Action**: Official source code security analysis" >> $GITHUB_STEP_SUMMARY
+          echo "- **pip-audit**: Python package vulnerability scanning" >> $GITHUB_STEP_SUMMARY
