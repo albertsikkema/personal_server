@@ -13,7 +13,6 @@ This project follows security best practices for managing secrets and credential
 
 **Test Configuration**:
 - `JWT_SECRET` in tests uses clearly marked test values like `test-jwt-secret-key-for-testing-purposes-...`
-- `API_KEY` in tests uses obvious test values like `test-api-key-12345`
 - All test secrets are publicly visible in the repository as they contain no sensitive data
 
 ### Production Environment
@@ -21,7 +20,6 @@ This project follows security best practices for managing secrets and credential
 **Environment Variables**:
 - Production secrets are managed via environment variables
 - `JWT_SECRET`: Must be a cryptographically secure 32+ character string
-- `API_KEY`: Legacy configuration, replaced by JWT authentication
 - Never commit real production secrets to the repository
 
 **Required Environment Variables**:
@@ -29,8 +27,7 @@ This project follows security best practices for managing secrets and credential
 # Required for JWT authentication
 JWT_SECRET=your-secure-production-jwt-secret-minimum-32-characters
 
-# Optional legacy API key (for backward compatibility)
-API_KEY=your-production-api-key
+# Legacy API key authentication has been removed - JWT only
 ```
 
 ### GitGuardian Configuration

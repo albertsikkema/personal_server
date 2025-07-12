@@ -51,8 +51,8 @@ def get_mcp_server() -> FastMCP:
                 Authentication: JWT Bearer tokens required for all operations.
                 
                 To obtain a token:
-                1. Authenticate with FastAPI-Users (POST /auth/jwt/login) OR use legacy X-API-KEY
-                2. Request MCP token from /auth/mcp-token endpoint (FastAPI-Users) or /auth/mcp-token/legacy (API key)
+                1. Authenticate with FastAPI-Users (POST /auth/jwt/login)
+                2. Request MCP token from /auth/mcp-token endpoint 
                 3. Use the returned JWT token in Authorization: Bearer <token> header
                 
                 Available tools:
@@ -78,7 +78,7 @@ def get_mcp_server() -> FastMCP:
                     This server is running without authentication (development mode only).
                     
                     In production, authentication is required:
-                    1. Authenticate with FastAPI-Users or legacy API key
+                    1. Authenticate with FastAPI-Users
                     2. Obtain MCP JWT token
                     3. Use Bearer token for MCP access
                     

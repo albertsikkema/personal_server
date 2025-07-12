@@ -1,15 +1,15 @@
 # FastAPI Application with Security by Design
 
-An enterprise-grade FastAPI application implementing API key authentication using FastAPI's official security system with dependency injection. Features automatic OpenAPI security documentation, production-ready operational capabilities, comprehensive security testing, and enhanced observability.
+An enterprise-grade FastAPI application implementing JWT Bearer token authentication using FastAPI-Users. Features user management, automatic OpenAPI security documentation, production-ready operational capabilities, comprehensive security testing, and enhanced observability.
 
 **Repository**: [https://github.com/epblc/fastapi_template](https://github.com/epblc/fastapi_template)
 
 ## Features
 
 ### 🔒 Security
-- **FastAPI Security Integration**: Official FastAPI security implementation using `fastapi.security.APIKeyHeader`
+- **FastAPI-Users Integration**: Modern user management with JWT Bearer token authentication
 - **Dependency Injection Authentication**: Clean, testable authentication using FastAPI dependencies
-- **API Key Authentication**: Secure authentication using X-API-KEY header with validation
+- **JWT Authentication**: Secure authentication using Bearer tokens with validation
 - **OpenAPI Security Documentation**: Automatic security scheme documentation in Swagger/ReDoc
 - **Comprehensive Security Testing**: Protection against injection attacks, XSS, and malformed input
 - **Case-Insensitive Headers**: HTTP standard-compliant header handling

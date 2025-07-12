@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "personal-server"
 version = "1.0.0"
-description = "A FastAPI application with API key authentication"
+description = "A FastAPI application with JWT Bearer token authentication"
 authors = [{name = "FastAPI App", email = "app@example.com"}]
 requires-python = ">=3.10"
 dependencies = [

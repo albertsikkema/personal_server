@@ -1,14 +1,12 @@
 import os
 import subprocess
 from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 
 from fastapi.testclient import TestClient
 
 # Set test environment variables before importing the app
-os.environ["API_KEY"] = "test-api-key-12345"
 os.environ["JWT_SECRET"] = (
     "test-jwt-secret-key-for-testing-purposes-minimum-32-chars-required"
 )
@@ -114,46 +112,3 @@ def invalid_bearer_headers():
     Provide headers with invalid JWT Bearer token.
     """
     return {"Authorization": "Bearer invalid-jwt-token"}
-
-
-# Legacy fixtures for backward compatibility with existing API key tests
-@pytest.fixture
-def valid_api_key():
-    """
-    Provide the valid test API key.
-    """
-    return "test-api-key-12345"
-
-
-@pytest.fixture
-def invalid_api_key():
-    """
-    Provide an invalid API key for testing.
-    """
-    return "invalid-key"
-
-
-@pytest.fixture
-def api_key_headers(valid_api_key):
-    """
-    Provide headers with valid API key (legacy).
-    """
-    return {"X-API-KEY": valid_api_key}
-
-
-@pytest.fixture
-def invalid_api_key_headers(invalid_api_key):
-    """
-    Provide headers with invalid API key (legacy).
-    """
-    return {"X-API-KEY": invalid_api_key}
-
-
-@pytest.fixture
-def mock_settings():
-    """
-    Mock settings for testing.
-    """
-    with patch("config.settings") as mock:
-        mock.API_KEY = "test-api-key-12345"
-        yield mock
