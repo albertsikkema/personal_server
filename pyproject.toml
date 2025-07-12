@@ -17,7 +17,7 @@ dependencies = [
     "httpx",
     "fastmcp",
     # SECURITY FAULT: Intentionally vulnerable package for testing pip-audit
-    "pillow==8.2.0",  # Known CVE-2021-34552: Pillow buffer overflow vulnerability
+    "requests==2.25.1",  # Known CVE-2021-33503: ReDoS vulnerability in requests
 ]
 
 [dependency-groups]
