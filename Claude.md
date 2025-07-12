@@ -429,6 +429,39 @@ make fix
 make help
 ```
 
+### Docker Development Workflow
+```bash
+# Build production Docker image
+make docker-build
+
+# Start development environment with live reload
+make docker-dev
+
+# Start production environment (requires .env.prod)
+make docker-prod
+
+# Run tests in container
+make docker-test
+
+# Show container status
+make docker-ps
+
+# Show logs (auto-detects environment)
+make docker-logs
+
+# Check health status and endpoints
+make docker-health
+
+# Open shell in running container
+make docker-shell
+
+# Stop all containers
+make docker-stop
+
+# Clean up containers and images
+make docker-clean
+```
+
 ### Key Environment Variables
 ```bash
 # Required
