@@ -231,15 +231,22 @@ jobs:
           ls -la main.py models/ routers/ services/ mcp_integration/ dependencies.py config.py middleware.py utils/ 2>&1 || echo "Some files missing"
           echo "Starting scan..."
           
-          # Always create a report file, even if the command fails
+          # Run bandit and capture exit code
           if uv run bandit -r main.py models/ routers/ services/ mcp_integration/ dependencies.py config.py middleware.py utils/ -f json -o bandit-report.json; then
-            echo "bandit scan completed successfully"
+            echo "bandit scan completed successfully - no security issues found"
             exit_code=0
           else
             exit_code=$?
             echo "bandit scan failed with exit code $exit_code"
-            echo "Creating fallback report..."
-            echo "{\"results\": [], \"scan_failed\": true, \"error\": \"bandit execution failed with exit code $exit_code\"}" > bandit-report.json
+            
+            # Check if JSON report was created despite exit code 1 (security issues found)
+            if [ -f bandit-report.json ]; then
+              echo "JSON report was created - security issues were found"
+              # Don't overwrite the report, bandit created it successfully
+            else
+              echo "No JSON report created - creating fallback report..."
+              echo "{\"results\": [], \"scan_failed\": true, \"error\": \"bandit execution failed with exit code $exit_code\"}" > bandit-report.json
+            fi
           fi
           
           echo "Checking if report file exists:"
@@ -247,9 +254,10 @@ jobs:
           
           if [ -f bandit-report.json ]; then
             echo "Report file contents:"
-            cat bandit-report.json
+            cat bandit-report.json | head -30  # Show first 30 lines to avoid too much output
           fi
           
+          # For bandit, exit code 1 with security issues found should still fail the build
           exit $exit_code
       
       - name: Generate bandit summary
