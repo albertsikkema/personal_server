@@ -90,9 +90,7 @@ jobs:
         run: uv sync
       
       - name: Run pip-audit vulnerability scan
-        uses: pypa/gh-action-pip-audit@v1.1.0
-        with:
-          local: true  # Only scan locally installed packages
+        run: uv run pip-audit --desc
       
       - name: Generate dependency summary
         if: always()
