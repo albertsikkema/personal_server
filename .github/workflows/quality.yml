@@ -124,7 +124,7 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           
           if [ -d "htmlcov" ]; then
-            echo "📈 **Coverage Report**: Generated and uploaded as artifact" >> $GITHUB_STEP_SUMMARY
+            echo "📈 **Coverage Report**: [Download detailed coverage report](../artifacts?name=coverage-report)" >> $GITHUB_STEP_SUMMARY
           fi
       
       - name: Upload coverage reports
