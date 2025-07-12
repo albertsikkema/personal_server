@@ -20,7 +20,7 @@ from fastapi.responses import JSONResponse
 
 # Import MCP server
 from mcp_integration.server import get_mcp_server
-from routers import crawling, geocoding
+from routers import crawling, geocoding, mcp_auth
 from schemas.user import UserCreate, UserRead, UserUpdate
 from utils.logging import get_logger, setup_logging
 
@@ -137,6 +137,15 @@ app.include_router(
         422: {"description": "Invalid input parameters"},
         429: {"description": "Rate limit exceeded"},
         503: {"description": "Crawl4AI service unavailable"},
+    },
+)
+
+# Include MCP authentication router
+app.include_router(
+    mcp_auth.router,
+    responses={
+        401: {"description": "Authentication required"},
+        500: {"description": "Token generation failed"},
     },
 )
 

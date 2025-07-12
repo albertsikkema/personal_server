@@ -27,12 +27,14 @@ An enterprise-grade FastAPI application implementing API key authentication usin
 - **Auto-generated Documentation**: Interactive API documentation at `/docs`
 - **Makefile Workflow**: Streamlined development commands
 
-### 🤖 MCP Integration
-- **Model Context Protocol**: Expose APIs as MCP tools for LLM clients
+### 🤖 MCP Integration with JWT Bearer Authentication
+- **Model Context Protocol**: Expose APIs as MCP tools for LLM clients with JWT Bearer token authentication
 - **FastMCP Server**: Integrated MCP server mounted at `/mcp-server/mcp` endpoint
 - **Geocoding Tool**: Convert city names to coordinates via MCP
-- **Streamable HTTP Transport**: Modern MCP transport protocol
+- **Streamable HTTP Transport**: Modern MCP transport protocol with per-request authentication
 - **Service Reuse**: Identical functionality to REST API endpoints
+
+**Authentication Behavior**: JWT Bearer tokens are validated on every MCP request, not just at connection time. The FastMCP client automatically includes the Bearer token in each request, providing secure per-request authentication following industry-standard JWT patterns.
 
 ## FastAPI Security Benefits
 
